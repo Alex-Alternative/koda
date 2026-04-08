@@ -1,5 +1,5 @@
 """
-Voice-to-Claude Setup Wizard
+Koda Setup Wizard
 Interactive configuration for first-time setup or reconfiguration.
 """
 
@@ -20,7 +20,7 @@ def clear():
 def banner():
     print()
     print("  ╔══════════════════════════════════════════╗")
-    print("  ║        Voice-to-Claude Setup Wizard      ║")
+    print("  ║        Koda Setup Wizard      ║")
     print("  ╚══════════════════════════════════════════╝")
     print()
 
@@ -61,7 +61,7 @@ def ask_yes_no(prompt, default=True):
 def setup_microphone():
     clear()
     banner()
-    print("  STEP 1 of 6: MICROPHONE\n")
+    print("  STEP 1 of 8: MICROPHONE\n")
     print("  ─────────────────────────────────────────\n")
 
     import sounddevice as sd
@@ -162,9 +162,9 @@ COMMAND_HOTKEY_OPTIONS = [
 def setup_hotkeys():
     clear()
     banner()
-    print("  STEP 2 of 6: HOTKEYS\n")
+    print("  STEP 2 of 8: HOTKEYS\n")
     print("  ─────────────────────────────────────────\n")
-    print("  Voice-to-Claude has two modes:\n")
+    print("  Koda has two modes:\n")
     print("    Dictation — pastes what you say (light cleanup)")
     print("    Command   — cleans up speech for coding (removes fillers, etc.)\n")
     print("  Each mode needs its own hotkey.\n")
@@ -197,7 +197,7 @@ def setup_hotkeys():
 def setup_mode():
     clear()
     banner()
-    print("  STEP 3 of 6: RECORDING MODE\n")
+    print("  STEP 3 of 8: RECORDING MODE\n")
     print("  ─────────────────────────────────────────\n")
 
     mode = ask_choice(
@@ -221,7 +221,7 @@ def setup_mode():
 def setup_model():
     clear()
     banner()
-    print("  STEP 4 of 6: SPEECH MODEL\n")
+    print("  STEP 4 of 8: SPEECH MODEL\n")
     print("  ─────────────────────────────────────────\n")
     print("  Larger models are more accurate but slower.\n")
 
@@ -249,7 +249,7 @@ def setup_model():
 def setup_language():
     clear()
     banner()
-    print("  STEP 5 of 6: LANGUAGE\n")
+    print("  STEP 5 of 8: LANGUAGE\n")
     print("  ─────────────────────────────────────────\n")
 
     lang = ask_choice(
@@ -280,16 +280,76 @@ def setup_language():
 def setup_preferences():
     clear()
     banner()
-    print("  STEP 6 of 6: PREFERENCES\n")
+    print("  STEP 6 of 8: PREFERENCES\n")
     print("  ─────────────────────────────────────────\n")
 
     sound = ask_yes_no("Enable sound effects? (beeps when recording starts/stops)", default=True)
     fillers = ask_yes_no('Remove filler words? ("um", "uh", "you know")', default=True)
     noise = ask_yes_no("Enable noise reduction? (slower, useful in noisy offices)", default=False)
-    auto_start = ask_yes_no("Start Voice-to-Claude when Windows starts?", default=False)
+    auto_start = ask_yes_no("Start Koda when Windows starts?", default=False)
     print()
     input("  Press Enter to continue...")
     return sound, fillers, noise, auto_start
+
+
+# ============================================================
+# STEP 7: WAKE WORD
+# ============================================================
+
+def setup_wake_word():
+    clear()
+    banner()
+    print("  STEP 7 of 8: WAKE WORD\n")
+    print("  ─────────────────────────────────────────\n")
+    print('  Say "Hey Koda" to start recording hands-free.')
+    print("  No need to press any keys — just speak the wake word.\n")
+    print("  Note: Wake word uses your mic continuously in the background.")
+    print("  It uses minimal CPU but keeps the mic active.\n")
+
+    enabled = ask_yes_no('Enable wake word ("Hey Koda")?', default=False)
+    print()
+    input("  Press Enter to continue...")
+    return enabled
+
+
+# ============================================================
+# STEP 8: LLM PROMPT POLISHING
+# ============================================================
+
+def setup_llm():
+    clear()
+    banner()
+    print("  STEP 8 of 8: AI PROMPT POLISHING\n")
+    print("  ─────────────────────────────────────────\n")
+    print("  When enabled, Koda uses a local AI model (via Ollama) to")
+    print("  clean up your speech into clear, concise instructions.\n")
+    print("  Example:")
+    print('    You say:  "uh can you like go into the database and um fix')
+    print('              that thing where the dates are wrong"')
+    print('    Becomes:  "Fix the date formatting issue in the database"\n')
+    print("  Requires Ollama to be installed (free, runs locally).")
+    print("  Download: https://ollama.com/download\n")
+
+    enabled = ask_yes_no("Enable AI prompt polishing?", default=False)
+
+    llm_model = "phi3:mini"
+    if enabled:
+        print()
+        llm_model = ask_choice(
+            "Pick an AI model (smaller = faster, larger = smarter):",
+            [
+                ("Phi-3 Mini (2.3GB) — Fast, good for cleanup", "phi3:mini"),
+                ("Llama 3.2 (2GB) — Fast, general purpose", "llama3.2:1b"),
+                ("Mistral (4.1GB) — Better quality, slower", "mistral"),
+                ("Llama 3.2 3B (2GB) — Good balance", "llama3.2:3b"),
+            ],
+            default=0,
+        )
+        print(f"\n  After setup, run: ollama pull {llm_model}")
+        print("  This downloads the model (one-time only).\n")
+
+    input("  Press Enter to continue...")
+    return enabled, llm_model
 
 
 # ============================================================
@@ -311,6 +371,9 @@ def show_summary_and_save(config):
     print(f"    Sound effects:    {'On' if config['sound_effects'] else 'Off'}")
     print(f"    Filler removal:   {'On' if config['post_processing']['remove_filler_words'] else 'Off'}")
     print(f"    Noise reduction:  {'On' if config['noise_reduction'] else 'Off'}")
+    print(f"    Wake word:        {'On (\"Hey Koda\")' if config['wake_word']['enabled'] else 'Off'}")
+    print(f"    LLM polish:       {'On (' + config['llm_polish']['model'] + ')' if config['llm_polish']['enabled'] else 'Off'}")
+    print(f"    Correction key:   {config['hotkey_correction']}")
     print()
 
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -327,7 +390,7 @@ def show_summary_and_save(config):
 def main():
     clear()
     banner()
-    print("  Welcome! This wizard will help you set up Voice-to-Claude.\n")
+    print("  Welcome! This wizard will help you set up Koda.\n")
     print("  You'll pick your microphone, hotkeys, and preferences.")
     print("  It takes about 1 minute.\n")
     input("  Press Enter to begin...")
@@ -339,6 +402,8 @@ def main():
     model_size = setup_model()
     language = setup_language()
     sound, fillers, noise, auto_start = setup_preferences()
+    wake_word_enabled = setup_wake_word()
+    llm_enabled, llm_model = setup_llm()
 
     # Build config
     config = {
@@ -346,6 +411,7 @@ def main():
         "language": language,
         "hotkey_dictation": hotkey_dict,
         "hotkey_command": hotkey_cmd,
+        "hotkey_correction": "ctrl+shift+z",
         "hotkey_mode": mode,
         "mic_device": mic_device,
         "sound_effects": sound,
@@ -359,6 +425,14 @@ def main():
         "vad": {
             "enabled": True,
             "silence_timeout_ms": 1500,
+        },
+        "wake_word": {
+            "enabled": wake_word_enabled,
+            "phrase": "hey koda",
+        },
+        "llm_polish": {
+            "enabled": llm_enabled,
+            "model": llm_model,
         },
         "_auto_start": auto_start,
     }
@@ -378,7 +452,7 @@ def main():
         json.dump(config, f, indent=2)
 
     print("  ─────────────────────────────────────────\n")
-    print("  To start Voice-to-Claude, double-click start.bat")
+    print("  To start Koda, double-click start.bat")
     print("  To re-run this setup, double-click configure.bat\n")
     print("  You can also change settings anytime by right-clicking")
     print("  the tray icon or editing config.json directly.\n")

@@ -1,12 +1,12 @@
 {
   "model_size": "base",
   "language": "en",
-  "hotkey_dictation": "f9",
-  "hotkey_command": "f10",
+  "hotkey_dictation": "ctrl+space",
+  "hotkey_command": "ctrl+shift+.",
   "hotkey_mode": "hold",
   "mic_device": null,
   "sound_effects": true,
-  "notifications": true,
+  "notifications": false,
   "noise_reduction": false,
   "post_processing": {
     "remove_filler_words": true,

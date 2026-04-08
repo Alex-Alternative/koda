@@ -1,12 +1,12 @@
 """
-Voice-to-Claude: Push-to-talk voice input for Claude Code.
+Koda — Push-to-talk voice input for any app.
 
 System tray app with two modes:
-  F9  = Dictation mode (raw transcription, light cleanup)
-  F10 = Command mode (full cleanup: filler removal, code vocab, formatting)
+  Dictation = raw transcription with light cleanup
+  Command   = full cleanup with filler removal, code vocab, optional LLM polish
 
-Supports hold-to-talk and toggle mode (with VAD auto-stop).
-Right-click the tray icon to access settings or quit.
+Features: hold-to-talk, toggle mode, VAD auto-stop, wake word ("Hey Koda"),
+correction mode, local LLM prompt polishing, noise reduction.
 """
 
 import sys
@@ -26,7 +26,7 @@ from config import load_config, save_config, open_config_file
 from text_processing import process_text
 
 # --- Version ---
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 
 # --- Globals ---
 recording = False
@@ -37,7 +37,10 @@ stream = None
 config = {}
 vad_model = None
 last_speech_time = 0
-recording_mode = "dictation"  # "dictation" or "command"
+recording_mode = "dictation"
+last_transcription = None
+wake_word_active = False
+wake_word_thread = None
 
 
 # ============================================================
@@ -71,21 +74,28 @@ def _play_wav(filename):
 
 
 def play_start_sound():
-    """Rising chime — recording started."""
     if config.get("sound_effects", True):
         _play_wav("start.wav")
 
 
 def play_stop_sound():
-    """Soft note — recording stopped, processing."""
     if config.get("sound_effects", True):
         _play_wav("stop.wav")
 
 
 def play_success_sound():
-    """Ascending chime — text pasted."""
     if config.get("sound_effects", True):
         _play_wav("success.wav")
+
+
+def play_error_sound():
+    if config.get("sound_effects", True):
+        _play_wav("error.wav")
+
+
+def play_wakeword_sound():
+    if config.get("sound_effects", True):
+        _play_wav("start.wav")
 
 
 # ============================================================
@@ -93,15 +103,13 @@ def play_success_sound():
 # ============================================================
 
 def update_tray(color, tooltip):
-    """Update tray icon color and hover text."""
     if tray_icon:
         tray_icon.icon = create_icon(color)
         tray_icon.title = tooltip
 
 
-def notify(message, title="Voice-to-Claude"):
-    """Show a Windows toast notification."""
-    if config.get("notifications", True) and tray_icon:
+def notify(message, title="Koda"):
+    if config.get("notifications", False) and tray_icon:
         try:
             tray_icon.notify(message[:200], title)
         except Exception:
@@ -113,7 +121,6 @@ def notify(message, title="Voice-to-Claude"):
 # ============================================================
 
 def load_whisper_model():
-    """Load the faster-whisper model."""
     global model
     from faster_whisper import WhisperModel
     model_size = config.get("model_size", "base")
@@ -121,11 +128,43 @@ def load_whisper_model():
 
 
 # ============================================================
+# LLM PROMPT POLISHING (Ollama)
+# ============================================================
+
+def polish_with_llm(text):
+    """Use a local LLM via Ollama to clean up speech into a clear instruction."""
+    if not config.get("llm_polish", {}).get("enabled", False):
+        return text
+    try:
+        import ollama
+        llm_model = config.get("llm_polish", {}).get("model", "phi3:mini")
+        response = ollama.chat(
+            model=llm_model,
+            messages=[{
+                "role": "system",
+                "content": (
+                    "You are a speech-to-text post-processor. The user dictated a message "
+                    "by voice and it may contain filler words, false starts, or rambling. "
+                    "Rewrite it as a clear, concise instruction or message. "
+                    "Keep the original intent and meaning. Do not add information. "
+                    "Do not explain what you did. Just output the cleaned text."
+                ),
+            }, {
+                "role": "user",
+                "content": text,
+            }],
+        )
+        result = response["message"]["content"].strip()
+        return result if result else text
+    except Exception:
+        return text
+
+
+# ============================================================
 # VAD (Voice Activity Detection)
 # ============================================================
 
 def init_vad():
-    """Initialize Silero VAD for auto-stop detection."""
     global vad_model
     if not config.get("vad", {}).get("enabled", True):
         return
@@ -133,15 +172,12 @@ def init_vad():
         from faster_whisper.vad import SileroVADModel
         vad_model = SileroVADModel()
     except Exception:
-        # Fall back to energy-based VAD if Silero fails
         vad_model = None
 
 
 def check_vad_silence(audio_chunk):
-    """Check if an audio chunk contains speech. Returns True if speech detected."""
     if vad_model is not None:
         try:
-            # Silero VAD expects 512-sample chunks at 16kHz
             chunk_size = 512
             if len(audio_chunk) >= chunk_size:
                 segment = audio_chunk[:chunk_size].astype(np.float32)
@@ -150,31 +186,119 @@ def check_vad_silence(audio_chunk):
                     return result.get("speech_prob", 0) > 0.5
         except Exception:
             pass
-
-    # Fallback: energy-based detection
     rms = np.sqrt(np.mean(audio_chunk ** 2))
     return rms > 0.01
 
 
 def vad_monitor_thread():
-    """Monitor audio for silence and auto-stop recording in toggle mode."""
     global recording, last_speech_time
-
     silence_timeout = config.get("vad", {}).get("silence_timeout_ms", 1500) / 1000.0
-
     while recording:
         time.sleep(0.1)
         if not audio_chunks:
             continue
-
-        # Check the most recent chunk
         latest = audio_chunks[-1].flatten()
         if check_vad_silence(latest):
             last_speech_time = time.time()
         elif time.time() - last_speech_time > silence_timeout:
-            # Silence exceeded timeout — auto-stop
             stop_recording()
             return
+
+
+# ============================================================
+# WAKE WORD ("Hey Koda")
+# ============================================================
+
+def start_wake_word_listener():
+    """Start background thread that listens for 'Hey Koda'."""
+    global wake_word_active, wake_word_thread
+    if not config.get("wake_word", {}).get("enabled", False):
+        return
+    wake_word_active = True
+    wake_word_thread = threading.Thread(target=_wake_word_loop, daemon=True)
+    wake_word_thread.start()
+
+
+def stop_wake_word_listener():
+    global wake_word_active
+    wake_word_active = False
+
+
+def _wake_word_loop():
+    """Continuously listen for the wake word using short Whisper checks."""
+    global wake_word_active
+    wake_phrase = config.get("wake_word", {}).get("phrase", "hey koda").lower()
+    check_interval = 2.0  # seconds of audio to check
+    energy_threshold = 0.008
+
+    while wake_word_active:
+        if recording:
+            time.sleep(0.5)
+            continue
+
+        # Record a short snippet
+        try:
+            audio = sd.rec(
+                int(check_interval * 16000),
+                samplerate=16000,
+                channels=1,
+                dtype="float32",
+                device=config.get("mic_device"),
+            )
+            sd.wait()
+        except Exception:
+            time.sleep(1)
+            continue
+
+        audio = audio.flatten()
+
+        # Skip if too quiet (no speech)
+        rms = np.sqrt(np.mean(audio ** 2))
+        if rms < energy_threshold:
+            continue
+
+        # Quick transcription to check for wake word
+        try:
+            segments, _ = model.transcribe(
+                audio, beam_size=1, language=config.get("language", "en"),
+                vad_filter=True,
+            )
+            text = " ".join(seg.text for seg in segments).strip().lower()
+
+            # Fuzzy match for the wake phrase
+            if _matches_wake_phrase(text, wake_phrase):
+                play_wakeword_sound()
+                update_tray("#3498db", "Koda: Listening...")
+                time.sleep(0.3)
+                # Start recording in dictation mode
+                start_recording("dictation")
+                # Wait for recording to finish
+                while recording:
+                    time.sleep(0.1)
+        except Exception:
+            pass
+
+
+def _matches_wake_phrase(text, phrase):
+    """Fuzzy match for wake word. Handles common Whisper mishearings."""
+    text = text.lower().strip().rstrip(".,!?")
+    phrase = phrase.lower().strip()
+
+    # Direct match
+    if phrase in text:
+        return True
+
+    # Common Whisper mishearings of "hey koda"
+    variants = [
+        "hey koda", "hey coda", "hey coder", "hey kota",
+        "a koda", "a coda", "hey koba", "hey coba",
+        "hey code a", "hey ko da",
+    ]
+    for variant in variants:
+        if variant in text:
+            return True
+
+    return False
 
 
 # ============================================================
@@ -182,13 +306,11 @@ def vad_monitor_thread():
 # ============================================================
 
 def audio_callback(indata, frames, time_info, status):
-    """Sounddevice callback — collects audio chunks while recording."""
     if recording:
         audio_chunks.append(indata.copy())
 
 
 def start_recording(mode="dictation"):
-    """Begin recording audio from the microphone."""
     global recording, audio_chunks, last_speech_time, recording_mode
     if recording:
         return
@@ -199,37 +321,33 @@ def start_recording(mode="dictation"):
 
     play_start_sound()
     label = "Dictation" if mode == "dictation" else "Command"
-    update_tray("#e74c3c", f"Voice-to-Claude: Recording ({label})...")
+    update_tray("#e74c3c", f"Koda: Recording ({label})...")
 
-    # In toggle mode, start VAD monitor to auto-stop
     if config.get("hotkey_mode", "hold") == "toggle":
         threading.Thread(target=vad_monitor_thread, daemon=True).start()
 
 
 def stop_recording():
-    """Stop recording and process the audio."""
     global recording
     if not recording:
         return
     recording = False
-
     play_stop_sound()
-    update_tray("#f39c12", "Voice-to-Claude: Transcribing...")
+    update_tray("#f39c12", "Koda: Transcribing...")
 
     if not audio_chunks:
-        update_tray("#2ecc71", "Voice-to-Claude: Ready")
+        update_tray("#2ecc71", "Koda: Ready")
         return
 
-    # Process in a thread to avoid blocking
     threading.Thread(target=_transcribe_and_paste, daemon=True).start()
 
 
 def _transcribe_and_paste():
-    """Transcribe audio, apply post-processing, and paste."""
+    global last_transcription
     try:
         audio = np.concatenate(audio_chunks, axis=0).flatten()
 
-        # Noise reduction (optional)
+        # Noise reduction
         if config.get("noise_reduction", False):
             try:
                 import noisereduce as nr
@@ -237,28 +355,26 @@ def _transcribe_and_paste():
             except Exception:
                 pass
 
-        # Transcribe with Whisper
+        # Transcribe
         language = config.get("language", "en")
         transcribe_opts = {
             "beam_size": 5,
             "language": language,
             "vad_filter": config.get("vad", {}).get("enabled", True),
         }
-
         segments, info = model.transcribe(audio, **transcribe_opts)
         text = " ".join(seg.text for seg in segments).strip()
 
         if not text:
-            update_tray("#2ecc71", "Voice-to-Claude: Ready")
-            notify("No speech detected")
+            update_tray("#2ecc71", "Koda: Ready")
             return
 
-        # Apply post-processing based on mode
+        # Post-processing
         if recording_mode == "command":
-            # Full processing pipeline
             processed = process_text(text, config)
+            # LLM polish for command mode
+            processed = polish_with_llm(processed)
         else:
-            # Dictation: light cleanup only (fillers + capitalize)
             light_config = {
                 "post_processing": {
                     "remove_filler_words": config.get("post_processing", {}).get("remove_filler_words", True),
@@ -269,49 +385,56 @@ def _transcribe_and_paste():
             processed = process_text(text, light_config)
 
         if processed:
+            last_transcription = processed
             pyperclip.copy(processed)
             time.sleep(0.15)
             pyautogui.hotkey("ctrl", "v")
             play_success_sound()
-            notify(processed)
 
     except Exception as e:
-        notify(f"Error: {e}")
+        play_error_sound()
     finally:
-        update_tray("#2ecc71", "Voice-to-Claude: Ready")
+        update_tray("#2ecc71", "Koda: Ready")
+
+
+# ============================================================
+# CORRECTION MODE
+# ============================================================
+
+def undo_and_rerecord():
+    """Undo the last paste and start a new recording."""
+    if last_transcription:
+        # Select all the text that was just pasted and delete it
+        # Use Ctrl+Z to undo the paste
+        pyautogui.hotkey("ctrl", "z")
+        time.sleep(0.2)
+    # Start recording in the same mode as last time
+    start_recording(recording_mode)
 
 
 # ============================================================
 # HOTKEYS
 # ============================================================
 
-def _get_trigger_key(hotkey_str):
-    """Get the last key in a combo for release detection. e.g. 'ctrl+space' -> 'space'."""
-    return hotkey_str.split("+")[-1].strip()
-
-
 def _register_hotkey(hotkey_str, on_press, on_release=None):
-    """Register a hotkey that works for both single keys and combos."""
     parts = [p.strip() for p in hotkey_str.split("+")]
     trigger_key = parts[-1]
     modifiers = parts[:-1]
 
     if modifiers:
-        # Combo key: use add_hotkey for press, on_release_key for the trigger key
         keyboard.add_hotkey(hotkey_str, on_press, suppress=False)
         if on_release:
             keyboard.on_release_key(trigger_key, lambda e: on_release())
     else:
-        # Single key
         keyboard.on_press_key(trigger_key, lambda e: on_press())
         if on_release:
             keyboard.on_release_key(trigger_key, lambda e: on_release())
 
 
 def setup_hotkeys():
-    """Register global hotkeys based on config."""
     hotkey_dict = config.get("hotkey_dictation", "ctrl+space")
     hotkey_cmd = config.get("hotkey_command", "ctrl+shift+.")
+    hotkey_correct = config.get("hotkey_correction", "ctrl+shift+z")
     mode = config.get("hotkey_mode", "hold")
 
     if mode == "hold":
@@ -341,33 +464,32 @@ def setup_hotkeys():
         _register_hotkey(hotkey_dict, on_press=toggle_dictation)
         _register_hotkey(hotkey_cmd, on_press=toggle_command)
 
+    # Correction hotkey (always available)
+    _register_hotkey(hotkey_correct, on_press=lambda: threading.Thread(
+        target=undo_and_rerecord, daemon=True).start())
+
 
 # ============================================================
 # TRAY MENU
 # ============================================================
 
 def build_menu():
-    """Build the system tray right-click menu."""
-    hotkey_dict = config.get("hotkey_dictation", "F9").upper()
-    hotkey_cmd = config.get("hotkey_command", "F10").upper()
+    hotkey_dict = config.get("hotkey_dictation", "ctrl+space").upper()
+    hotkey_cmd = config.get("hotkey_command", "ctrl+shift+.").upper()
+    hotkey_corr = config.get("hotkey_correction", "ctrl+shift+z").upper()
     mode = config.get("hotkey_mode", "hold")
     mode_label = "Hold-to-talk" if mode == "hold" else "Toggle (auto-stop)"
+    wake_enabled = config.get("wake_word", {}).get("enabled", False)
 
     return pystray.Menu(
-        pystray.MenuItem(f"Voice-to-Claude v{VERSION}", None, enabled=False),
+        pystray.MenuItem(f"Koda v{VERSION}", None, enabled=False),
         pystray.MenuItem(f"{hotkey_dict} = Dictation  |  {hotkey_cmd} = Command", None, enabled=False),
-        pystray.MenuItem(f"Mode: {mode_label}", None, enabled=False),
+        pystray.MenuItem(f"{hotkey_corr} = Redo  |  Mode: {mode_label}", None, enabled=False),
         pystray.Menu.SEPARATOR,
-        # --- Toggles ---
         pystray.MenuItem(
             "Sound effects",
             toggle_setting("sound_effects"),
             checked=lambda item: config.get("sound_effects", True),
-        ),
-        pystray.MenuItem(
-            "Notifications",
-            toggle_setting("notifications"),
-            checked=lambda item: config.get("notifications", True),
         ),
         pystray.MenuItem(
             "Remove filler words",
@@ -384,8 +506,17 @@ def build_menu():
             toggle_setting("noise_reduction"),
             checked=lambda item: config.get("noise_reduction", False),
         ),
+        pystray.MenuItem(
+            "LLM polish (Ollama)",
+            toggle_llm_polish,
+            checked=lambda item: config.get("llm_polish", {}).get("enabled", False),
+        ),
+        pystray.MenuItem(
+            f'Wake word ("Hey Koda")',
+            toggle_wake_word,
+            checked=lambda item: config.get("wake_word", {}).get("enabled", False),
+        ),
         pystray.Menu.SEPARATOR,
-        # --- Mode switch ---
         pystray.MenuItem(
             "Switch to Toggle mode" if mode == "hold" else "Switch to Hold mode",
             switch_mode,
@@ -397,7 +528,6 @@ def build_menu():
 
 
 def toggle_setting(key):
-    """Create a toggle handler for a top-level config boolean."""
     def handler(icon, item):
         config[key] = not config.get(key, True)
         save_config(config)
@@ -406,7 +536,6 @@ def toggle_setting(key):
 
 
 def toggle_post_processing(key):
-    """Create a toggle handler for a post_processing config boolean."""
     def handler(icon, item):
         pp = config.setdefault("post_processing", {})
         pp[key] = not pp.get(key, False)
@@ -415,16 +544,31 @@ def toggle_post_processing(key):
     return handler
 
 
+def toggle_llm_polish(icon, item):
+    llm = config.setdefault("llm_polish", {"enabled": False, "model": "phi3:mini"})
+    llm["enabled"] = not llm.get("enabled", False)
+    save_config(config)
+    icon.menu = build_menu()
+
+
+def toggle_wake_word(icon, item):
+    ww = config.setdefault("wake_word", {"enabled": False, "phrase": "hey koda"})
+    ww["enabled"] = not ww.get("enabled", False)
+    save_config(config)
+    if ww["enabled"]:
+        start_wake_word_listener()
+    else:
+        stop_wake_word_listener()
+    icon.menu = build_menu()
+
+
 def switch_mode(icon, item):
-    """Switch between hold and toggle hotkey mode."""
     keyboard.unhook_all()
     current = config.get("hotkey_mode", "hold")
     config["hotkey_mode"] = "toggle" if current == "hold" else "hold"
     save_config(config)
     setup_hotkeys()
     icon.menu = build_menu()
-    new_mode = "Toggle (auto-stop)" if config["hotkey_mode"] == "toggle" else "Hold-to-talk"
-    notify(f"Switched to {new_mode}")
 
 
 # ============================================================
@@ -432,8 +576,8 @@ def switch_mode(icon, item):
 # ============================================================
 
 def on_quit(icon, item):
-    """Clean up and exit."""
-    global stream
+    global stream, wake_word_active
+    wake_word_active = False
     keyboard.unhook_all()
     if stream:
         stream.stop()
@@ -442,17 +586,12 @@ def on_quit(icon, item):
 
 
 def run_setup():
-    """Background thread: load model, start audio, register hotkeys."""
     global stream
 
-    # Load Whisper model
-    update_tray("gray", "Voice-to-Claude: Loading model...")
+    update_tray("gray", "Koda: Loading model...")
     load_whisper_model()
-
-    # Initialize VAD
     init_vad()
 
-    # Start audio stream
     mic_device = config.get("mic_device")
     stream = sd.InputStream(
         samplerate=16000,
@@ -463,31 +602,25 @@ def run_setup():
     )
     stream.start()
 
-    # Register hotkeys
     setup_hotkeys()
+    start_wake_word_listener()
 
-    update_tray("#2ecc71", "Voice-to-Claude: Ready")
-    notify("Voice-to-Claude is ready!")
+    update_tray("#2ecc71", "Koda: Ready")
 
 
 def main():
     global tray_icon, config
 
-    # Load config
     config = load_config()
 
-    # Create tray icon
     tray_icon = pystray.Icon(
-        "voice-to-claude",
+        "koda",
         create_icon("gray"),
-        "Voice-to-Claude: Loading...",
+        "Koda: Loading...",
         build_menu(),
     )
 
-    # Run setup in background so tray appears immediately
     threading.Thread(target=run_setup, daemon=True).start()
-
-    # Blocks — runs the tray event loop
     tray_icon.run()
 
 

@@ -1,5 +1,5 @@
 """
-Configuration management for Voice-to-Claude.
+Configuration management for Koda.
 Loads/saves config.json with sensible defaults.
 """
 
@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
     "language": "en",
     "hotkey_dictation": "ctrl+space",
     "hotkey_command": "ctrl+shift+.",
+    "hotkey_correction": "ctrl+shift+z",
     "hotkey_mode": "hold",
     "mic_device": None,
     "sound_effects": True,
@@ -28,11 +29,18 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "silence_timeout_ms": 1500,
     },
+    "wake_word": {
+        "enabled": False,
+        "phrase": "hey koda",
+    },
+    "llm_polish": {
+        "enabled": False,
+        "model": "phi3:mini",
+    },
 }
 
 
 def _deep_merge(base, override):
-    """Merge override dict into base dict recursively."""
     merged = base.copy()
     for key, value in override.items():
         if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
@@ -43,7 +51,6 @@ def _deep_merge(base, override):
 
 
 def load_config():
-    """Load config from disk, merging with defaults for missing keys."""
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             user_config = json.load(f)
@@ -54,13 +61,11 @@ def load_config():
 
 
 def save_config(config):
-    """Save config to disk."""
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
 
 def open_config_file():
-    """Open config.json in the user's default editor."""
     if not os.path.exists(CONFIG_PATH):
         save_config(DEFAULT_CONFIG)
     os.startfile(CONFIG_PATH)
