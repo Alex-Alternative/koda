@@ -1,5 +1,5 @@
 """
-Stress Test Suite for Voice-to-Claude
+Stress Test Suite for Koda
 
 Tests each component individually, then end-to-end.
 Run with: python test_stress.py
@@ -337,5 +337,5 @@ if failed:
     print("\nFix the failures above before going live.")
     sys.exit(1)
 else:
-    print("\nAll tests passed! Voice-to-Claude is ready to go.")
+    print("\nAll tests passed! Koda is ready to go.")
     sys.exit(0)

@@ -1,5 +1,5 @@
 @echo off
-echo Running Voice-to-Claude Stress Test...
+echo Running Koda Stress Test...
 echo.
 cd /d "%~dp0"
 call venv\Scripts\activate

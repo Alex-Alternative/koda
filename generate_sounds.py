@@ -1,4 +1,4 @@
-"""Generate pleasant sound effect .wav files for Voice-to-Claude."""
+"""Generate pleasant sound effect .wav files for Koda."""
 
 import wave
 import struct

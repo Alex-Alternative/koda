@@ -1,5 +1,5 @@
 """
-Text post-processing pipeline for Voice-to-Claude.
+Text post-processing pipeline for Koda.
 Cleans up Whisper transcription output before pasting.
 """
 

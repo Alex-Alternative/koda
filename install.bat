@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   Voice-to-Claude Installer
+echo   Koda Installer
 echo ============================================
 echo.
 
