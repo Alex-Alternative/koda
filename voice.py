@@ -714,7 +714,8 @@ def build_menu():
             "Switch to Toggle mode" if mode == "hold" else "Switch to Hold mode",
             switch_mode,
         ),
-        pystray.MenuItem("Open settings file", lambda icon, item: open_config_file()),
+        pystray.MenuItem("Settings window", lambda icon, item: _open_settings_gui()),
+        pystray.MenuItem("Open config file", lambda icon, item: open_config_file()),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", on_quit),
     )
@@ -748,6 +749,13 @@ def _build_voice_menu_items():
             radio=True,
         ))
     return items
+
+
+def _open_settings_gui():
+    """Launch the settings GUI in a separate process."""
+    import subprocess
+    settings_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings_gui.py")
+    subprocess.Popen([sys.executable, settings_py])
 
 
 def toggle_setting(key):
