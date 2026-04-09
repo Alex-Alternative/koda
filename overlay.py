@@ -67,29 +67,40 @@ class KodaOverlay:
         root.attributes("-toolwindow", True)
 
         # Main frame with rounded-corner look
-        frame = tk.Frame(root, bg="#1e1e2e", padx=12, pady=6)
+        # Outer frame with rounded feel — dark card style
+        BG = "#181825"
+        BG_INNER = "#1e1e2e"
+        ACCENT = "#89b4fa"
+        TEXT = "#cdd6f4"
+        TEXT_DIM = "#a6adc8"
+
+        # Border frame for subtle outline
+        border = tk.Frame(root, bg="#313244", padx=1, pady=1)
+        border.pack(fill="both", expand=True)
+
+        frame = tk.Frame(border, bg=BG, padx=14, pady=8)
         frame.pack(fill="both", expand=True)
 
         # Status indicator + text on one line
-        top_row = tk.Frame(frame, bg="#1e1e2e")
+        top_row = tk.Frame(frame, bg=BG)
         top_row.pack(fill="x")
 
-        self._dot = tk.Canvas(top_row, width=12, height=12, bg="#1e1e2e",
+        self._dot = tk.Canvas(top_row, width=14, height=14, bg=BG,
                               highlightthickness=0)
-        self._dot.pack(side="left", padx=(0, 6))
-        self._dot_item = self._dot.create_oval(2, 2, 10, 10, fill="#2ecc71", outline="")
+        self._dot.pack(side="left", padx=(0, 8), pady=(2, 0))
+        self._dot_item = self._dot.create_oval(1, 1, 13, 13, fill="#2ecc71", outline="#2ecc71", width=0)
 
         self._label = tk.Label(top_row, text="Koda — Ready",
-                               bg="#1e1e2e", fg="#cdd6f4",
-                               font=("Segoe UI", 9), anchor="w")
+                               bg=BG, fg=TEXT,
+                               font=("Segoe UI Semibold", 10), anchor="w")
         self._label.pack(side="left", fill="x", expand=True)
 
         # Preview text (shown during recording/transcribing)
         self._preview_label = tk.Label(frame, text="",
-                                       bg="#1e1e2e", fg="#a6adc8",
-                                       font=("Segoe UI", 8), anchor="w",
-                                       wraplength=280, justify="left")
-        self._preview_label.pack(fill="x", pady=(2, 0))
+                                       bg=BG, fg=TEXT_DIM,
+                                       font=("Segoe UI", 9), anchor="w",
+                                       wraplength=300, justify="left")
+        self._preview_label.pack(fill="x", pady=(4, 0))
         self._preview_label.pack_forget()  # Hidden initially
 
         # Position: bottom-right of screen, above taskbar
@@ -99,19 +110,20 @@ class KodaOverlay:
         else:
             screen_w = root.winfo_screenwidth()
             screen_h = root.winfo_screenheight()
-            w = 300
+            w = 320
             x = screen_w - w - 20
             y = screen_h - 80
         root.geometry(f"+{x}+{y}")
-        root.minsize(200, 0)
+        root.minsize(220, 0)
 
         # Drag bindings
-        for widget in (root, frame, top_row, self._label, self._dot):
+        all_widgets = (root, border, frame, top_row, self._label, self._dot)
+        for widget in all_widgets:
             widget.bind("<Button-1>", self._on_drag_start)
             widget.bind("<B1-Motion>", self._on_drag_motion)
 
         # Right-click to hide
-        for widget in (root, frame, top_row, self._label, self._dot):
+        for widget in all_widgets:
             widget.bind("<Button-3>", lambda e: self.toggle_visible())
 
         # Start update loop
@@ -155,9 +167,9 @@ class KodaOverlay:
         else:
             self._preview_label.pack_forget()
 
-        # Pulse effect: slightly lower opacity when ready (more subtle)
+        # Slightly dimmer when idle, full opacity when active
         if self._state == "ready":
-            self._root.attributes("-alpha", self._opacity * 0.7)
+            self._root.attributes("-alpha", self._opacity * 0.9)
         else:
             self._root.attributes("-alpha", self._opacity)
 
