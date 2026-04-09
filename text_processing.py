@@ -498,7 +498,30 @@ def format_spoken_emails(text):
         result.append(words[i])
         i += 1
 
-    return " ".join(result)
+    text = " ".join(result)
+
+    # Also handle "at" when domain already has real dots (Whisper sometimes formats them)
+    # e.g., "alex at altfunding.com" → "alex@altfunding.com"
+    # Skip when the word before "at" looks like a verb (looked, arrived, etc.)
+    _VERB_SUFFIXES = ("ed", "ing", "tion", "ly", "ous", "ive", "able", "ible")
+
+    def _email_at_replace(m):
+        before = m.group(1)
+        if before.lower().endswith(_VERB_SUFFIXES) or before.lower() in (
+            "look", "am", "is", "are", "was", "were", "be", "been", "the",
+            "a", "an", "this", "that", "it", "i", "we", "they", "not",
+        ):
+            return m.group(0)  # Keep original
+        return f"{m.group(1)}@{m.group(2)}"
+
+    text = re.sub(
+        r'\b(\w[\w.]*)\s+at\s+(\w+\.\w[\w.]*)\b',
+        _email_at_replace,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    return text
 
 
 # --- Processing Pipeline ---

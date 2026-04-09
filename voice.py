@@ -81,9 +81,9 @@ def _play_wav(filename):
     filepath = os.path.join(SOUNDS_DIR, filename)
     if not os.path.exists(filepath):
         return
-    # Use winsound directly — sounddevice conflicts with the mic input stream
+    # Play synchronously inside a thread (SND_ASYNC + daemon thread = sound gets killed)
     threading.Thread(
-        target=lambda: winsound.PlaySound(filepath, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT),
+        target=lambda: winsound.PlaySound(filepath, winsound.SND_FILENAME | winsound.SND_NODEFAULT),
         daemon=True,
     ).start()
 
@@ -501,10 +501,11 @@ def _transcribe_and_paste():
         target_lang = translation_cfg.get("target_language", "English")
 
         transcribe_kwargs = {
-            "beam_size": 3,
+            "beam_size": 1,
             "vad_filter": True,
             "repetition_penalty": 1.2,
             "no_repeat_ngram_size": 3,
+            "condition_on_previous_text": False,
         }
 
         # Whisper's built-in translate task: any language → English
