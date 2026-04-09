@@ -17,21 +17,38 @@ else:
     print(f"WARNING: Model not found at {MODEL_DIR}")
     bundle_model = None
 
+# All Python modules that voice.py imports
+DATA_FILES = [
+    "config.py",
+    "text_processing.py",
+    "settings_gui.py",
+    "history.py",
+    "overlay.py",
+    "profiles.py",
+    "transcribe_file.py",
+    "voice_commands.py",
+    "context_menu.py",
+    "custom_words.json",
+    "profiles.json",
+]
+
 args = [
     os.path.join(SCRIPT_DIR, "voice.py"),
     "--name=Koda",
     "--onefile",
     "--windowed",
     "--icon=NONE",
-    f"--add-data={os.path.join(SCRIPT_DIR, 'config.py')};.",
-    f"--add-data={os.path.join(SCRIPT_DIR, 'text_processing.py')};.",
-    f"--add-data={os.path.join(SCRIPT_DIR, 'settings_gui.py')};.",
+    # Bundle all module files
+    *[f"--add-data={os.path.join(SCRIPT_DIR, f)};." for f in DATA_FILES if os.path.exists(os.path.join(SCRIPT_DIR, f))],
+    # Bundle sounds directory
     f"--add-data={os.path.join(SCRIPT_DIR, 'sounds')};sounds",
+    # Hidden imports for pystray, PIL, pyttsx3
     "--hidden-import=pystray._win32",
     "--hidden-import=PIL._tkinter_finder",
     "--hidden-import=comtypes.stream",
     "--hidden-import=pyttsx3.drivers",
     "--hidden-import=pyttsx3.drivers.sapi5",
+    # Output paths
     f"--distpath={os.path.join(SCRIPT_DIR, 'dist')}",
     f"--workpath={os.path.join(SCRIPT_DIR, 'build')}",
     f"--specpath={SCRIPT_DIR}",
@@ -41,6 +58,10 @@ args = [
 if bundle_model:
     args.append(f"--add-data={bundle_model};_model_base")
 
+print("Building Koda.exe with all Phase 1-3 features...")
+print(f"Bundling {len(DATA_FILES)} modules + sounds + Whisper model")
+print()
+
 PyInstaller.__main__.run(args)
 
 # Cleanup
@@ -48,5 +69,11 @@ if bundle_model and os.path.exists(bundle_model):
     shutil.rmtree(bundle_model)
     print("Cleaned up bundled model copy")
 
-print()
-print(f"Build complete! Output: {os.path.join(SCRIPT_DIR, 'dist', 'Koda.exe')}")
+exe_path = os.path.join(SCRIPT_DIR, 'dist', 'Koda.exe')
+if os.path.exists(exe_path):
+    size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+    print()
+    print(f"Build complete! Output: {exe_path}")
+    print(f"Size: {size_mb:.0f} MB")
+else:
+    print("ERROR: Build failed - Koda.exe not found")
