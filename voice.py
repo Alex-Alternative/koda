@@ -28,10 +28,11 @@ from history import init_db, save_transcription
 from overlay import KodaOverlay
 from profiles import ProfileMonitor
 from voice_commands import extract_and_execute_commands
+from stats import init_stats_db as init_stats, log_transcription_stats, log_command_stats
 
 
 # --- Version ---
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 
 # --- Globals ---
 recording = False
@@ -58,15 +59,67 @@ base_config = {}  # Original config before profile overrides
 # ============================================================
 
 def create_icon(color="gray"):
-    """Create a mic icon for the system tray."""
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    """Create a polished mic icon for the system tray.
+
+    Rounded square background with a clean microphone glyph.
+    Colors: gray=idle, #2ecc71=ready, #e74c3c=recording, #f39c12=processing,
+            #9b59b6=reading, #3498db=listening.
+    """
+    size = 64
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse([4, 4, 60, 60], fill=color)
-    draw.rounded_rectangle([22, 10, 42, 38], radius=10, fill="white")
-    draw.arc([16, 28, 48, 52], start=0, end=180, fill="white", width=3)
-    draw.line([32, 52, 32, 58], fill="white", width=3)
-    draw.line([24, 58, 40, 58], fill="white", width=3)
+
+    # Rounded square background with subtle gradient feel
+    # Darker border for depth
+    border_color = _darken(color, 0.7)
+    draw.rounded_rectangle([0, 0, 63, 63], radius=14, fill=border_color)
+    draw.rounded_rectangle([2, 2, 61, 61], radius=13, fill=color)
+
+    # Lighter highlight stripe at top for gloss effect
+    highlight = _lighten(color, 1.3)
+    draw.rounded_rectangle([4, 3, 59, 20], radius=10, fill=highlight)
+    # Blend back the bottom of the highlight
+    draw.rounded_rectangle([2, 14, 61, 61], radius=10, fill=color)
+
+    # Microphone body (rounded pill shape)
+    draw.rounded_rectangle([24, 10, 40, 34], radius=8, fill="white")
+
+    # Microphone arc (the cradle)
+    draw.arc([17, 22, 47, 48], start=0, end=180, fill="white", width=3)
+
+    # Mic stand
+    draw.line([32, 48, 32, 54], fill="white", width=2)
+    # Base
+    draw.rounded_rectangle([24, 53, 40, 56], radius=2, fill="white")
+
     return img
+
+
+def _darken(color, factor):
+    """Darken a color by a factor (0-1)."""
+    if isinstance(color, str):
+        if color.startswith("#"):
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+        else:
+            # Named colors
+            _named = {"gray": (128, 128, 128), "red": (231, 76, 60)}
+            r, g, b = _named.get(color, (128, 128, 128))
+    else:
+        r, g, b = color
+    return (int(r * factor), int(g * factor), int(b * factor))
+
+
+def _lighten(color, factor):
+    """Lighten a color by a factor (>1)."""
+    if isinstance(color, str):
+        if color.startswith("#"):
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+        else:
+            _named = {"gray": (128, 128, 128), "red": (231, 76, 60)}
+            r, g, b = _named.get(color, (128, 128, 128))
+    else:
+        r, g, b = color
+    return (min(255, int(r * factor)), min(255, int(g * factor)), min(255, int(b * factor)))
 
 
 # ============================================================
@@ -470,16 +523,8 @@ def _load_custom_words():
         return {}
 
 
-_last_paste_time = 0
-
-
 def _transcribe_and_paste():
-    global last_transcription, _last_paste_time
-    # Prevent duplicate paste if this function is somehow called twice
-    now = time.time()
-    if now - _last_paste_time < 2.0:
-        return
-    _last_paste_time = now
+    global last_transcription
     try:
         rec_start = time.time()
         audio = np.concatenate(audio_chunks, axis=0).flatten()
@@ -503,9 +548,6 @@ def _transcribe_and_paste():
         transcribe_kwargs = {
             "beam_size": 1,
             "vad_filter": True,
-            "repetition_penalty": 1.2,
-            "no_repeat_ngram_size": 3,
-            "condition_on_previous_text": False,
         }
 
         # Whisper's built-in translate task: any language → English
@@ -574,6 +616,8 @@ def _transcribe_and_paste():
                     play_success_sound()
                     try:
                         save_transcription(f"[cmd: {', '.join(cmds)}]", recording_mode, duration)
+                        for cmd in cmds:
+                            log_command_stats(cmd)
                     except Exception:
                         pass
                     update_tray("#2ecc71", "Koda: Ready")
@@ -593,9 +637,19 @@ def _transcribe_and_paste():
                 keyboard.send("ctrl+v")
                 play_success_sound()
 
-            # Save to history
+            # Save to history and stats
             try:
                 save_transcription(processed, recording_mode, duration)
+                app_name = ""
+                prof_name = ""
+                if profile_monitor:
+                    try:
+                        from profiles import get_active_window_info
+                        app_name, _ = get_active_window_info()
+                        prof_name = profile_monitor.current_profile or ""
+                    except Exception:
+                        pass
+                log_transcription_stats(processed, recording_mode, duration, app_name, prof_name)
             except Exception:
                 pass
 
@@ -914,6 +968,7 @@ def build_menu():
         pystray.MenuItem("Install Explorer right-click menu", lambda icon, item: _install_context_menu()),
         pystray.MenuItem("Edit custom words", lambda icon, item: _open_custom_words()),
         pystray.MenuItem("Edit app profiles", lambda icon, item: _open_profiles()),
+        pystray.MenuItem("Usage stats", lambda icon, item: _open_stats()),
         pystray.MenuItem("Settings window", lambda icon, item: _open_settings_gui()),
         pystray.MenuItem("Open config file", lambda icon, item: open_config_file()),
         pystray.Menu.SEPARATOR,
@@ -1122,6 +1177,13 @@ def _open_custom_words():
     os.startfile(custom_words_path)
 
 
+def _open_stats():
+    """Open the usage stats dashboard."""
+    from stats_gui import StatsDashboard
+    dash = StatsDashboard()
+    dash.show()
+
+
 def _open_transcribe_file():
     """Open the audio file transcription window."""
     from transcribe_file import TranscribeFileWindow
@@ -1194,6 +1256,7 @@ def run_setup():
     init_vad()
     init_tts()
     init_db()
+    init_stats()
 
     mic_device = config.get("mic_device")
     stream = sd.InputStream(
