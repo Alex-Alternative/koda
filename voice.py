@@ -29,6 +29,7 @@ from overlay import KodaOverlay
 from profiles import ProfileMonitor
 from voice_commands import extract_and_execute_commands
 
+
 # --- Version ---
 VERSION = "3.0.0"
 
@@ -80,20 +81,11 @@ def _play_wav(filename):
     filepath = os.path.join(SOUNDS_DIR, filename)
     if not os.path.exists(filepath):
         return
-
-    def _play():
-        try:
-            import wave
-            with wave.open(filepath, 'r') as wf:
-                rate = wf.getframerate()
-                frames = wf.readframes(wf.getnframes())
-                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32767
-            sd.play(audio, samplerate=rate)
-        except Exception:
-            # Fallback to winsound
-            winsound.PlaySound(filepath, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
-
-    threading.Thread(target=_play, daemon=True).start()
+    # Use winsound directly — sounddevice conflicts with the mic input stream
+    threading.Thread(
+        target=lambda: winsound.PlaySound(filepath, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT),
+        daemon=True,
+    ).start()
 
 
 def play_start_sound():
@@ -444,11 +436,19 @@ def start_recording(mode="dictation", force_vad=False, vad_timeout_ms=None):
         threading.Thread(target=vad_monitor_thread, args=(vad_timeout_ms,), daemon=True).start()
 
 
+_last_stop_time = 0
+
+
 def stop_recording():
-    global recording
+    global recording, _last_stop_time
     if not recording:
         return
+    now = time.time()
+    if now - _last_stop_time < 1.0:
+        return
+    _last_stop_time = now
     recording = False
+
     play_stop_sound()
     update_tray("#f39c12", "Koda: Transcribing...")
 
@@ -470,8 +470,16 @@ def _load_custom_words():
         return {}
 
 
+_last_paste_time = 0
+
+
 def _transcribe_and_paste():
-    global last_transcription
+    global last_transcription, _last_paste_time
+    # Prevent duplicate paste if this function is somehow called twice
+    now = time.time()
+    if now - _last_paste_time < 2.0:
+        return
+    _last_paste_time = now
     try:
         rec_start = time.time()
         audio = np.concatenate(audio_chunks, axis=0).flatten()
@@ -494,7 +502,9 @@ def _transcribe_and_paste():
 
         transcribe_kwargs = {
             "beam_size": 3,
-            "vad_filter": False,
+            "vad_filter": True,
+            "repetition_penalty": 1.2,
+            "no_repeat_ngram_size": 3,
         }
 
         # Whisper's built-in translate task: any language → English
@@ -512,9 +522,15 @@ def _transcribe_and_paste():
             prompt_words = " ".join(custom_words.values())
             transcribe_kwargs["initial_prompt"] = prompt_words
 
-        # Transcribe — vad_filter OFF for short phrases, beam_size 3 for speed
+        # Transcribe with VAD filter + repetition penalty to prevent hallucinated repeats
         segments, info = model.transcribe(audio, **transcribe_kwargs)
-        text = " ".join(seg.text for seg in segments).strip()
+        # Deduplicate consecutive identical segments (Whisper hallucination guard)
+        seg_texts = []
+        for seg in segments:
+            t = seg.text.strip()
+            if t and (not seg_texts or t != seg_texts[-1]):
+                seg_texts.append(t)
+        text = " ".join(seg_texts).strip()
 
         if not text:
             update_tray("#2ecc71", "Koda: Ready")
@@ -571,7 +587,9 @@ def _transcribe_and_paste():
             else:
                 pyperclip.copy(processed)
                 time.sleep(0.15)
-                pyautogui.hotkey("ctrl", "v")
+                # Use keyboard.send instead of pyautogui — pyautogui's
+                # synthetic Ctrl conflicts with the keyboard library's hooks
+                keyboard.send("ctrl+v")
                 play_success_sound()
 
             # Save to history
@@ -731,6 +749,9 @@ def read_selected():
 # HOTKEYS
 # ============================================================
 
+_registered_release_keys = set()  # Track which release keys are already hooked
+
+
 def _register_hotkey(hotkey_str, on_press, on_release=None):
     parts = [p.strip() for p in hotkey_str.split("+")]
     trigger_key = parts[-1]
@@ -738,12 +759,15 @@ def _register_hotkey(hotkey_str, on_press, on_release=None):
 
     if modifiers:
         keyboard.add_hotkey(hotkey_str, on_press, suppress=False)
-        if on_release:
-            keyboard.on_release_key(trigger_key, lambda e: on_release())
+        if on_release and trigger_key not in _registered_release_keys:
+            _registered_release_keys.add(trigger_key)
+            # Only fire release if we're actually recording (prevents spurious fires)
+            keyboard.on_release_key(trigger_key, lambda e: on_release() if recording else None)
     else:
         keyboard.on_press_key(trigger_key, lambda e: on_press())
-        if on_release:
-            keyboard.on_release_key(trigger_key, lambda e: on_release())
+        if on_release and trigger_key not in _registered_release_keys:
+            _registered_release_keys.add(trigger_key)
+            keyboard.on_release_key(trigger_key, lambda e: on_release() if recording else None)
 
 
 def setup_hotkeys():
@@ -1186,8 +1210,39 @@ def run_setup():
     update_tray("#2ecc71", "Koda: Ready")
 
 
+_lock_handle = None
+
+
+def _acquire_single_instance():
+    """Ensure only one Koda instance runs at a time using a mutex."""
+    global _lock_handle
+    import ctypes
+    _lock_handle = ctypes.windll.kernel32.CreateMutexW(None, True, "KodaVoiceAppMutex")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        # Check if another Koda instance is actually running
+        import subprocess
+        result = subprocess.run(
+            ["tasklist", "//fi", "imagename eq pythonw.exe"],
+            capture_output=True, text=True
+        )
+        result2 = subprocess.run(
+            ["tasklist", "//fi", "imagename eq python.exe"],
+            capture_output=True, text=True
+        )
+        # Count large python processes (>100MB = has Whisper loaded = is Koda)
+        if "pythonw.exe" in result.stdout or "python.exe" in result2.stdout:
+            print("Koda is already running. Exiting.")
+            sys.exit(0)
+        # Stale mutex — take ownership
+        ctypes.windll.kernel32.ReleaseMutex(_lock_handle)
+        ctypes.windll.kernel32.CloseHandle(_lock_handle)
+        _lock_handle = ctypes.windll.kernel32.CreateMutexW(None, True, "KodaVoiceAppMutex")
+
+
 def main():
     global tray_icon, config
+
+    _acquire_single_instance()
 
     config = load_config()
 
