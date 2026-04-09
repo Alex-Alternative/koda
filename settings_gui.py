@@ -156,8 +156,32 @@ class KodaSettings(tk.Tk):
         self.overlay_var = tk.BooleanVar(value=self.config_data.get("overlay_enabled", True))
         ttk.Checkbutton(main, text="Floating status overlay (live recording preview)", variable=self.overlay_var).pack(anchor="w")
 
+        self.voicecmds_var = tk.BooleanVar(value=self.config_data.get("voice_commands", True))
+        ttk.Checkbutton(main, text="Voice commands (say 'select all', 'undo', 'new line')", variable=self.voicecmds_var).pack(anchor="w")
+
         self.profiles_var = tk.BooleanVar(value=self.config_data.get("profiles_enabled", True))
         ttk.Checkbutton(main, text="Per-app profiles (auto-switch settings by active window)", variable=self.profiles_var).pack(anchor="w")
+
+        # --- Translation ---
+        ttk.Label(main, text="TRANSLATION", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
+
+        trans_frame = ttk.Frame(main)
+        trans_frame.pack(fill="x", pady=2)
+
+        self.trans_var = tk.BooleanVar(value=self.config_data.get("translation", {}).get("enabled", False))
+        ttk.Checkbutton(trans_frame, text="Enable translation (speak one language, type another)",
+                         variable=self.trans_var).pack(anchor="w")
+
+        target_frame = ttk.Frame(main)
+        target_frame.pack(fill="x", pady=2)
+        ttk.Label(target_frame, text="Target language:").pack(side="left", padx=(0, 10))
+        self.trans_lang_var = tk.StringVar(value=self.config_data.get("translation", {}).get("target_language", "English"))
+        trans_combo = ttk.Combobox(target_frame, textvariable=self.trans_lang_var, width=22,
+                                   values=["English", "Spanish", "French", "German", "Portuguese",
+                                           "Japanese", "Korean", "Chinese", "Italian", "Russian"],
+                                   state="readonly")
+        trans_combo.pack(side="left")
+        ttk.Label(target_frame, text="(English uses Whisper; others need Ollama)").pack(side="left", padx=(10, 0))
 
         # --- Read-back voice ---
         ttk.Label(main, text="READ-BACK", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
@@ -223,6 +247,11 @@ class KodaSettings(tk.Tk):
         cfg["streaming"] = self.stream_var.get()
         cfg["overlay_enabled"] = self.overlay_var.get()
         cfg["profiles_enabled"] = self.profiles_var.get()
+        cfg["voice_commands"] = self.voicecmds_var.get()
+
+        trans = cfg.setdefault("translation", {})
+        trans["enabled"] = self.trans_var.get()
+        trans["target_language"] = self.trans_lang_var.get()
 
         pp = cfg.setdefault("post_processing", {})
         pp["remove_filler_words"] = self.filler_var.get()

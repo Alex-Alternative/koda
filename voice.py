@@ -27,6 +27,7 @@ from text_processing import process_text, apply_custom_vocabulary
 from history import init_db, save_transcription
 from overlay import KodaOverlay
 from profiles import ProfileMonitor
+from voice_commands import extract_and_execute_commands
 
 # --- Version ---
 VERSION = "3.0.0"
@@ -195,6 +196,31 @@ def polish_with_llm(text):
                     "Rewrite it as a clear, concise instruction or message. "
                     "Keep the original intent and meaning. Do not add information. "
                     "Do not explain what you did. Just output the cleaned text."
+                ),
+            }, {
+                "role": "user",
+                "content": text,
+            }],
+        )
+        result = response["message"]["content"].strip()
+        return result if result else text
+    except Exception:
+        return text
+
+
+def translate_with_llm(text, target_language):
+    """Use a local LLM via Ollama to translate text to the target language."""
+    try:
+        import ollama
+        llm_model = config.get("llm_polish", {}).get("model", "phi3:mini")
+        response = ollama.chat(
+            model=llm_model,
+            messages=[{
+                "role": "system",
+                "content": (
+                    f"You are a translator. Translate the following text to {target_language}. "
+                    "Output ONLY the translated text, nothing else. "
+                    "Keep the tone and meaning. Do not explain."
                 ),
             }, {
                 "role": "user",
@@ -462,15 +488,24 @@ def _transcribe_and_paste():
         custom_words = _load_custom_words()
 
         # Build transcription kwargs
+        translation_cfg = config.get("translation", {})
+        translate_enabled = translation_cfg.get("enabled", False)
+        target_lang = translation_cfg.get("target_language", "English")
+
         transcribe_kwargs = {
             "beam_size": 3,
             "vad_filter": False,
         }
 
-        # Language: "auto" means omit the language param to let Whisper auto-detect
-        language = config.get("language", "en")
-        if language != "auto":
-            transcribe_kwargs["language"] = language
+        # Whisper's built-in translate task: any language → English
+        if translate_enabled and target_lang.lower() == "english":
+            transcribe_kwargs["task"] = "translate"
+            # Don't set source language — let Whisper auto-detect
+        else:
+            # Language: "auto" means omit the language param to let Whisper auto-detect
+            language = config.get("language", "en")
+            if language != "auto":
+                transcribe_kwargs["language"] = language
 
         # Pass custom words as initial_prompt to bias Whisper recognition
         if custom_words:
@@ -500,13 +535,34 @@ def _transcribe_and_paste():
                     "remove_filler_words": config.get("post_processing", {}).get("remove_filler_words", True),
                     "code_vocabulary": False,
                     "auto_capitalize": config.get("post_processing", {}).get("auto_capitalize", True),
+                    "auto_format": config.get("post_processing", {}).get("auto_format", True),
                 }
             }
             processed = process_text(text, light_config)
 
+        # Translation: if target is not English, use LLM to translate
+        # (Whisper handles → English natively via task="translate")
+        if translate_enabled and target_lang.lower() != "english":
+            update_tray("#f39c12", f"Koda: Translating to {target_lang}...")
+            processed = translate_with_llm(processed, target_lang)
+
         if processed:
-            last_transcription = processed
             duration = time.time() - rec_start
+
+            # Check for voice editing commands (e.g. "select all", "undo")
+            if config.get("voice_commands", True):
+                processed, cmds = extract_and_execute_commands(processed)
+                if cmds and not processed:
+                    # Entire utterance was a command — no text to paste
+                    play_success_sound()
+                    try:
+                        save_transcription(f"[cmd: {', '.join(cmds)}]", recording_mode, duration)
+                    except Exception:
+                        pass
+                    update_tray("#2ecc71", "Koda: Ready")
+                    return
+
+            last_transcription = processed
 
             output_mode = config.get("output_mode", "auto_paste")
             if output_mode == "clipboard":
@@ -774,6 +830,11 @@ def build_menu():
             checked=lambda item: config.get("post_processing", {}).get("code_vocabulary", False),
         ),
         pystray.MenuItem(
+            "Voice commands (select all, undo...)",
+            toggle_setting("voice_commands"),
+            checked=lambda item: config.get("voice_commands", True),
+        ),
+        pystray.MenuItem(
             "Auto-format (numbers, dates)",
             toggle_post_processing("auto_format"),
             checked=lambda item: config.get("post_processing", {}).get("auto_format", True),
@@ -787,6 +848,10 @@ def build_menu():
             "LLM polish (Ollama)",
             toggle_llm_polish,
             checked=lambda item: config.get("llm_polish", {}).get("enabled", False),
+        ),
+        pystray.MenuItem(
+            "Translation",
+            pystray.Menu(*_build_translation_menu_items()),
         ),
         pystray.MenuItem(
             f'Wake word ("Hey Koda")',
@@ -821,6 +886,7 @@ def build_menu():
             checked=lambda item: overlay is not None and overlay.is_visible,
         ),
         pystray.MenuItem("Transcribe audio file", lambda icon, item: _open_transcribe_file()),
+        pystray.MenuItem("Install Explorer right-click menu", lambda icon, item: _install_context_menu()),
         pystray.MenuItem("Edit custom words", lambda icon, item: _open_custom_words()),
         pystray.MenuItem("Edit app profiles", lambda icon, item: _open_profiles()),
         pystray.MenuItem("Settings window", lambda icon, item: _open_settings_gui()),
@@ -882,6 +948,59 @@ def _build_speed_menu_items():
             radio=True,
         ))
     return items
+
+
+def _build_translation_menu_items():
+    """Build submenu items for translation target language."""
+    trans = config.get("translation", {})
+    enabled = trans.get("enabled", False)
+    target = trans.get("target_language", "English")
+
+    items = [
+        pystray.MenuItem(
+            "Off" if enabled else "Off (current)",
+            lambda icon, item: _set_translation(icon, False, ""),
+            checked=lambda item: not config.get("translation", {}).get("enabled", False),
+            radio=True,
+        ),
+    ]
+
+    # Whisper native: any → English
+    languages = [
+        ("English", "Speak any language → type English (Whisper)"),
+        ("Spanish", "Type in Spanish (LLM)"),
+        ("French", "Type in French (LLM)"),
+        ("German", "Type in German (LLM)"),
+        ("Portuguese", "Type in Portuguese (LLM)"),
+        ("Japanese", "Type in Japanese (LLM)"),
+        ("Korean", "Type in Korean (LLM)"),
+        ("Chinese", "Type in Chinese (LLM)"),
+        ("Italian", "Type in Italian (LLM)"),
+        ("Russian", "Type in Russian (LLM)"),
+    ]
+
+    for lang, desc in languages:
+        def make_handler(l):
+            return lambda icon, item: _set_translation(icon, True, l)
+        items.append(pystray.MenuItem(
+            f"→ {lang}",
+            make_handler(lang),
+            checked=lambda item, l=lang: (
+                config.get("translation", {}).get("enabled", False) and
+                config.get("translation", {}).get("target_language", "") == l
+            ),
+            radio=True,
+        ))
+
+    return items
+
+
+def _set_translation(icon, enabled, target):
+    trans = config.setdefault("translation", {})
+    trans["enabled"] = enabled
+    trans["target_language"] = target
+    save_config(config)
+    icon.menu = build_menu()
 
 
 def _open_settings_gui():
@@ -983,6 +1102,17 @@ def _open_transcribe_file():
     from transcribe_file import TranscribeFileWindow
     win = TranscribeFileWindow(model, config)
     win.show()
+
+
+def _install_context_menu():
+    """Install the 'Transcribe with Koda' right-click context menu."""
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "context_menu.py")
+    result = subprocess.run([sys.executable, script, "install"], capture_output=True, text=True)
+    if result.returncode == 0:
+        notify("Context menu installed! Right-click audio files to transcribe.")
+    else:
+        notify(f"Failed: {result.stderr[:100]}")
 
 
 def _open_profiles():

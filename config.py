@@ -48,6 +48,11 @@ DEFAULT_CONFIG = {
     },
     "overlay_enabled": True,
     "profiles_enabled": True,
+    "voice_commands": True,
+    "translation": {
+        "enabled": False,
+        "target_language": "English",
+    },
 }
 
 
