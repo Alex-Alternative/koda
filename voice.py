@@ -210,6 +210,16 @@ def notify(message, title="Koda"):
             pass
 
 
+def error_notify(message):
+    """Show a tray notification for errors — always shown regardless of config."""
+    logger.error("User notification: %s", message)
+    if tray_icon:
+        try:
+            tray_icon.notify(message[:200], "Koda Error")
+        except Exception:
+            pass
+
+
 # ============================================================
 # MODEL
 # ============================================================
@@ -219,13 +229,19 @@ def load_whisper_model():
     from faster_whisper import WhisperModel
     model_size = config.get("model_size", "small")
 
-    # When running as PyInstaller exe, use the bundled model
-    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    bundled = os.path.join(base_dir, f"_model_{model_size}")
-    if os.path.isdir(bundled):
-        model = WhisperModel(bundled, device="cpu", compute_type="int8")
-    else:
-        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    try:
+        # When running as PyInstaller exe, use the bundled model
+        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        bundled = os.path.join(base_dir, f"_model_{model_size}")
+        if os.path.isdir(bundled):
+            model = WhisperModel(bundled, device="cpu", compute_type="int8")
+        else:
+            model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        logger.info("Whisper model '%s' loaded successfully", model_size)
+    except Exception as e:
+        logger.error("Failed to load Whisper model: %s", e, exc_info=True)
+        error_notify(f"Failed to load speech model '{model_size}'. Check internet connection for first download.")
+        raise
 
 
 # ============================================================
@@ -672,6 +688,7 @@ def _transcribe_and_paste():
 
     except Exception as e:
         logger.error("Transcription pipeline error: %s", e, exc_info=True)
+        error_notify("Transcription failed. Check debug.log for details.")
         play_error_sound()
     finally:
         update_tray("#2ecc71", "Koda: Ready")
@@ -937,8 +954,10 @@ def _watchdog_thread():
                 try:
                     stream.start()
                     logger.info("Audio stream restarted successfully")
+                    error_notify("Microphone recovered automatically.")
                 except Exception as e:
                     logger.error("Failed to restart audio stream: %s", e)
+                    error_notify("Microphone disconnected. Check your mic and restart Koda.")
                     update_tray("#e74c3c", "Koda: Mic error")
 
             # Check keyboard hooks are alive by testing internal state
@@ -949,6 +968,7 @@ def _watchdog_thread():
                 if hook_count == 0 and _hotkeys_registered:
                     logger.warning("Keyboard hooks lost — re-registering")
                     setup_hotkeys()
+                    error_notify("Hotkeys recovered automatically. You're good to go.")
                     update_tray("#2ecc71", "Koda: Ready (recovered)")
             except Exception as e:
                 logger.error("Hook health check error: %s", e)
