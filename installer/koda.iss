@@ -9,7 +9,7 @@
 ; Requires: Inno Setup 6 — https://jrsoftware.org/isdl.php
 
 #define MyAppName "Koda"
-#define MyAppVersion "4.1.0"
+#define MyAppVersion "4.2.0"
 #define MyAppPublisher "Alex Alternative"
 #define MyAppURL "https://github.com/Alex-Alternative/koda"
 #define MyAppExeName "Koda.exe"
@@ -33,6 +33,8 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#MyAppName}
+SetupIconFile=..\koda.ico
+UninstallDisplayIcon={app}\koda.ico
 SetupLogging=yes
 
 [Languages]
@@ -54,6 +56,9 @@ Source: "..\custom_words.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoe
 ; Sound effects
 Source: "..\sounds\*.wav"; DestDir: "{app}\sounds"; Flags: ignoreversion
 
+; Icon file
+Source: "..\koda.ico"; DestDir: "{app}"; Flags: ignoreversion
+
 ; Plugins directory (empty by default, user adds plugins here)
 Source: "..\plugins\__init__.py"; DestDir: "{app}\plugins"; Flags: ignoreversion
 
@@ -63,11 +68,11 @@ Name: "{app}\plugins"; Permissions: users-modify
 
 [Icons]
 ; Start menu
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\koda.ico"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 ; Desktop shortcut (optional)
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\koda.ico"; Tasks: desktopicon
 
 ; Auto-start (optional)
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: autostart

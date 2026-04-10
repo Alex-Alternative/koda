@@ -33,8 +33,11 @@ DATA_FILES = [
     "plugin_manager.py",
     "hotkey_service.py",
     "prompt_assist.py",
+    "updater.py",
+    "generate_icon.py",
     "custom_words.json",
     "profiles.json",
+    "koda.ico",
 ]
 
 args = [
@@ -42,7 +45,7 @@ args = [
     "--name=Koda",
     "--onefile",
     "--windowed",
-    "--icon=NONE",
+    f"--icon={os.path.join(SCRIPT_DIR, 'koda.ico')}",
     # Bundle all module files
     *[f"--add-data={os.path.join(SCRIPT_DIR, f)};." for f in DATA_FILES if os.path.exists(os.path.join(SCRIPT_DIR, f))],
     # Bundle sounds directory and plugins
@@ -82,7 +85,7 @@ args = [
 if bundle_model:
     args.append(f"--add-data={bundle_model};_model_small")
 
-print("Building Koda.exe with all Phase 1-4 features + small model...")
+print("Building Koda.exe with all features + small model...")
 print(f"Bundling {len(DATA_FILES)} modules + sounds + Whisper model")
 print()
 

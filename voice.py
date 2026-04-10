@@ -33,6 +33,7 @@ from voice_commands import extract_and_execute_commands
 from stats import init_stats_db as init_stats, log_transcription_stats, log_command_stats
 from plugin_manager import PluginManager
 from prompt_assist import refine_prompt
+from updater import check_for_update, open_releases_page
 
 
 # --- Logging ---
@@ -45,7 +46,7 @@ logger = logging.getLogger("koda")
 logger.setLevel(logging.DEBUG)  # Koda's own logger is DEBUG, but library noise is WARNING+
 
 # --- Version ---
-VERSION = "4.1.0"
+VERSION = "4.2.0"
 
 # --- Globals ---
 recording = False
@@ -58,6 +59,7 @@ vad_model = None
 last_speech_time = 0
 recording_mode = "dictation"
 last_transcription = None
+_update_available = None  # (version, download_url) if update found
 wake_word_active = False
 wake_word_thread = None
 wake_buffer = []  # rolling buffer for wake word detection
@@ -78,22 +80,27 @@ _hotkey_pong = threading.Event()  # set by event thread when "pong" arrives
 # ICON
 # ============================================================
 
-def create_branded_icon(size=64, dot_color=None):
-    """Koda branded icon — dark rounded square, bold font K, colored status dot.
+def _load_icon_base(size=64):
+    """Load the professional icon from koda.ico at the requested size."""
+    ico_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "koda.ico")
+    try:
+        img = Image.open(ico_path)
+        img.size = (size, size)
+        img.load()
+        return img.copy()
+    except Exception:
+        pass
+    # Fallback: generate a simple icon if .ico is missing
+    return _generate_fallback_icon(size)
 
-    Uses Segoe UI Bold font for crisp anti-aliased K at any size.
-    Used for both tray icon and floating overlay.
-    """
+
+def _generate_fallback_icon(size=64):
+    """Fallback icon when koda.ico is not available."""
     from PIL import ImageFont
-
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     s = size / 64
-
-    # Dark rounded square — more rounded corners
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(18 * s), fill="#1a1a2e")
-
-    # Bahnschrift — modern geometric DIN-like font
+    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(18 * s), fill="#0f1023")
     try:
         font = ImageFont.truetype("bahnschrift.ttf", int(42 * s))
     except Exception:
@@ -101,26 +108,33 @@ def create_branded_icon(size=64, dot_color=None):
             font = ImageFont.truetype("C:/Windows/Fonts/bahnschrift.ttf", int(42 * s))
         except Exception:
             font = ImageFont.load_default()
-
     bbox = draw.textbbox((0, 0), "K", font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x = (size - tw) // 2 - bbox[0]
     y = (size - th) // 2 - bbox[1] - int(2 * s)
     draw.text((x, y), "K", fill="white", font=font)
+    return img
 
-    # Status dot (bottom-right)
+
+def create_branded_icon(size=64, dot_color=None):
+    """Koda branded icon with optional colored status dot.
+
+    Loads from koda.ico for the professional designed icon,
+    falls back to code-generated if .ico is missing.
+    """
+    img = _load_icon_base(size)
     if dot_color:
+        draw = ImageDraw.Draw(img)
+        s = size / 64
         dr = int(7 * s)
         cx, cy = size - int(10 * s), size - int(10 * s)
-        draw.ellipse([cx - dr - 2, cy - dr - 2, cx + dr + 2, cy + dr + 2], fill="#1a1a2e")
+        draw.ellipse([cx - dr - 2, cy - dr - 2, cx + dr + 2, cy + dr + 2], fill="#0f1023")
         draw.ellipse([cx - dr, cy - dr, cx + dr, cy + dr], fill=dot_color)
-
     return img
 
 
 def create_icon(color="gray"):
     """Tray icon — branded K on dark bg with colored status dot."""
-    # Map state color to dot color
     if color == "gray":
         return create_branded_icon(64, dot_color=None)
     elif color == "#2ecc71":
@@ -1187,6 +1201,10 @@ def build_menu():
         *[pystray.MenuItem(label, lambda icon, item, cb=cb: cb())
           for label, cb in plugins.get_all_menu_items()],
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem(
+            f"Update available: v{_update_available[0]}" if _update_available else "Check for updates",
+            _on_update_menu_click,
+        ),
         pystray.MenuItem("Quit", on_quit),
     )
 
@@ -1432,6 +1450,37 @@ def switch_mode(icon, item):
     icon.menu = build_menu()
 
 
+def _on_update_menu_click(icon, item):
+    """Handle 'Check for updates' / 'Download update' tray menu click."""
+    if _update_available:
+        # Open download URL in browser
+        import webbrowser
+        webbrowser.open(_update_available[1])
+    else:
+        # Trigger a manual check
+        def _manual_check_cb(version, url):
+            global _update_available
+            if version:
+                _update_available = (version, url)
+                icon.menu = build_menu()
+                if tray_icon:
+                    try:
+                        tray_icon.notify(
+                            f"Koda v{version} is available! Click 'Update available' in the tray menu.",
+                            "Koda Update",
+                        )
+                    except Exception:
+                        pass
+            else:
+                if tray_icon:
+                    try:
+                        tray_icon.notify(f"You're running the latest version (v{VERSION}).", "Koda")
+                    except Exception:
+                        pass
+
+        check_for_update(VERSION, callback=_manual_check_cb)
+
+
 # ============================================================
 # LIFECYCLE
 # ============================================================
@@ -1452,6 +1501,23 @@ def on_quit(icon, item):
         stream.stop()
         stream.close()
     icon.stop()
+
+
+def _on_update_check_result(latest_version, download_url):
+    """Called from background thread when update check completes."""
+    global _update_available
+    if latest_version:
+        _update_available = (latest_version, download_url)
+        if tray_icon:
+            try:
+                tray_icon.notify(
+                    f"Koda v{latest_version} is available (you have v{VERSION}).\n"
+                    f"Right-click tray icon → Check for updates.",
+                    "Koda Update Available",
+                )
+            except Exception:
+                pass
+        logger.info("Update available: v%s (download: %s)", latest_version, download_url)
 
 
 def run_setup():
@@ -1505,6 +1571,31 @@ def run_setup():
 
     update_tray("#2ecc71", "Koda: Ready")
     logger.info("Koda v%s fully initialized", VERSION)
+
+    # First-run welcome — show hotkey cheat sheet on first launch
+    _first_run_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".koda_initialized")
+    if not os.path.exists(_first_run_path):
+        try:
+            with open(_first_run_path, "w") as f:
+                f.write(VERSION)
+            hk_dict = config.get("hotkey_dictation", "ctrl+space").upper()
+            hk_cmd = config.get("hotkey_command", "f8").upper()
+            hk_prompt = config.get("hotkey_prompt", "f9").upper()
+            welcome_msg = (
+                f"Welcome to Koda!\n"
+                f"{hk_dict} = Dictation (hold to talk)\n"
+                f"{hk_cmd} = Command mode\n"
+                f"{hk_prompt} = Prompt Assist\n"
+                f"Right-click tray icon for settings."
+            )
+            if tray_icon:
+                tray_icon.notify(welcome_msg, "Koda — Voice Input Ready")
+            logger.info("First-run welcome shown")
+        except Exception as e:
+            logger.debug("First-run welcome failed: %s", e)
+
+    # Check for updates (background, non-blocking)
+    check_for_update(VERSION, callback=_on_update_check_result)
 
 
 _lock_handle = None

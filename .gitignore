@@ -11,3 +11,5 @@ dist/
 koda_history.db
 debug.log
 _model_*/
+.koda_initialized
+koda_stats.db

@@ -27,7 +27,7 @@ All hotkeys are configurable in `config.json`.
 
 ### Option A: Windows Installer (recommended)
 
-1. Download `KodaSetup-4.1.0.exe` from [Releases](https://github.com/Alex-Alternative/koda/releases)
+1. Download `KodaSetup-4.2.0.exe` from [Releases](https://github.com/Alex-Alternative/koda/releases)
 2. Double-click to install
 3. Launch Koda from the Start Menu or desktop shortcut
 
@@ -179,7 +179,7 @@ Requires [Inno Setup 6](https://jrsoftware.org/isdl.php).
 python installer\build_installer.py
 ```
 
-Output: `dist\KodaSetup-4.1.0.exe`.
+Output: `dist\KodaSetup-4.2.0.exe`.
 
 ---
 

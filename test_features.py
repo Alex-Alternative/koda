@@ -506,5 +506,35 @@ class TestUsageStats(unittest.TestCase):
         self.assertEqual(summary["total_commands"], 0)
 
 
+class TestUpdater(unittest.TestCase):
+    """Tests for auto-update version comparison."""
+
+    def test_newer_version(self):
+        from updater import _is_newer
+        self.assertTrue(_is_newer("4.2.0", "4.1.0"))
+        self.assertTrue(_is_newer("5.0.0", "4.2.0"))
+        self.assertTrue(_is_newer("4.1.1", "4.1.0"))
+
+    def test_same_version(self):
+        from updater import _is_newer
+        self.assertFalse(_is_newer("4.1.0", "4.1.0"))
+
+    def test_older_version(self):
+        from updater import _is_newer
+        self.assertFalse(_is_newer("4.0.0", "4.1.0"))
+        self.assertFalse(_is_newer("3.9.9", "4.1.0"))
+
+    def test_icon_generation(self):
+        from generate_icon import generate_icon_image
+        img = generate_icon_image(64)
+        self.assertEqual(img.size, (64, 64))
+        self.assertEqual(img.mode, "RGBA")
+
+    def test_icon_status_dot(self):
+        from generate_icon import generate_status_icon
+        img = generate_status_icon(64, dot_color="#2ecc71")
+        self.assertEqual(img.size, (64, 64))
+
+
 if __name__ == "__main__":
     unittest.main()

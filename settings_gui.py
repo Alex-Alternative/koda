@@ -29,7 +29,7 @@ class KodaSettings(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Koda Settings")
-        self.geometry("520x860")
+        self.geometry("520x920")
         self.resizable(False, False)
         self.configure(bg="#1e1e2e")
 
@@ -61,25 +61,39 @@ class KodaSettings(tk.Tk):
         hk_frame = ttk.Frame(main)
         hk_frame.pack(fill="x", pady=2)
 
+        # Safe hotkey options: F-keys and ctrl+space (proven to work without conflicts)
+        FKEY_OPTIONS = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"]
+        DICTATION_OPTIONS = ["ctrl+space", "ctrl+alt+d"] + FKEY_OPTIONS
+
         ttk.Label(hk_frame, text="Dictation:").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self.hk_dict = ttk.Entry(hk_frame, width=25)
-        self.hk_dict.insert(0, self.config_data.get("hotkey_dictation", "ctrl+space"))
-        self.hk_dict.grid(row=0, column=1, sticky="w")
+        self.hk_dict_var = tk.StringVar(value=self.config_data.get("hotkey_dictation", "ctrl+space"))
+        ttk.Combobox(hk_frame, textvariable=self.hk_dict_var, width=22,
+                     values=DICTATION_OPTIONS, state="readonly").grid(row=0, column=1, sticky="w")
 
         ttk.Label(hk_frame, text="Command:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_cmd = ttk.Entry(hk_frame, width=25)
-        self.hk_cmd.insert(0, self.config_data.get("hotkey_command", "ctrl+shift+."))
-        self.hk_cmd.grid(row=1, column=1, sticky="w")
+        self.hk_cmd_var = tk.StringVar(value=self.config_data.get("hotkey_command", "f8"))
+        ttk.Combobox(hk_frame, textvariable=self.hk_cmd_var, width=22,
+                     values=FKEY_OPTIONS, state="readonly").grid(row=1, column=1, sticky="w")
 
-        ttk.Label(hk_frame, text="Correction:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_corr = ttk.Entry(hk_frame, width=25)
-        self.hk_corr.insert(0, self.config_data.get("hotkey_correction", "ctrl+shift+z"))
-        self.hk_corr.grid(row=2, column=1, sticky="w")
+        ttk.Label(hk_frame, text="Prompt Assist:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=3)
+        self.hk_prompt_var = tk.StringVar(value=self.config_data.get("hotkey_prompt", "f9"))
+        ttk.Combobox(hk_frame, textvariable=self.hk_prompt_var, width=22,
+                     values=FKEY_OPTIONS, state="readonly").grid(row=2, column=1, sticky="w")
 
-        ttk.Label(hk_frame, text="Read back:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_read = ttk.Entry(hk_frame, width=25)
-        self.hk_read.insert(0, self.config_data.get("hotkey_readback", "ctrl+shift+r"))
-        self.hk_read.grid(row=3, column=1, sticky="w")
+        ttk.Label(hk_frame, text="Correction:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=3)
+        self.hk_corr_var = tk.StringVar(value=self.config_data.get("hotkey_correction", "f7"))
+        ttk.Combobox(hk_frame, textvariable=self.hk_corr_var, width=22,
+                     values=FKEY_OPTIONS, state="readonly").grid(row=3, column=1, sticky="w")
+
+        ttk.Label(hk_frame, text="Read back:").grid(row=4, column=0, sticky="w", padx=(0, 10), pady=3)
+        self.hk_read_var = tk.StringVar(value=self.config_data.get("hotkey_readback", "f6"))
+        ttk.Combobox(hk_frame, textvariable=self.hk_read_var, width=22,
+                     values=FKEY_OPTIONS, state="readonly").grid(row=4, column=1, sticky="w")
+
+        ttk.Label(hk_frame, text="Read selected:").grid(row=5, column=0, sticky="w", padx=(0, 10), pady=3)
+        self.hk_readsel_var = tk.StringVar(value=self.config_data.get("hotkey_readback_selected", "f5"))
+        ttk.Combobox(hk_frame, textvariable=self.hk_readsel_var, width=22,
+                     values=FKEY_OPTIONS, state="readonly").grid(row=5, column=1, sticky="w")
 
         # --- Model ---
         ttk.Label(main, text="SPEECH MODEL", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
@@ -234,10 +248,12 @@ class KodaSettings(tk.Tk):
     def save(self):
         cfg = self.config_data
 
-        cfg["hotkey_dictation"] = self.hk_dict.get().strip()
-        cfg["hotkey_command"] = self.hk_cmd.get().strip()
-        cfg["hotkey_correction"] = self.hk_corr.get().strip()
-        cfg["hotkey_readback"] = self.hk_read.get().strip()
+        cfg["hotkey_dictation"] = self.hk_dict_var.get()
+        cfg["hotkey_command"] = self.hk_cmd_var.get()
+        cfg["hotkey_prompt"] = self.hk_prompt_var.get()
+        cfg["hotkey_correction"] = self.hk_corr_var.get()
+        cfg["hotkey_readback"] = self.hk_read_var.get()
+        cfg["hotkey_readback_selected"] = self.hk_readsel_var.get()
         cfg["model_size"] = self.model_var.get()
         cfg["language"] = self.lang_var.get()
         cfg["hotkey_mode"] = self.mode_var.get()
