@@ -70,15 +70,15 @@ def create_branded_icon(size=64, dot_color=None):
     draw = ImageDraw.Draw(img)
     s = size / 64
 
-    # Dark rounded square background
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(14 * s), fill="#1a1a2e")
+    # Dark rounded square — more rounded corners
+    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(18 * s), fill="#1a1a2e")
 
-    # Bold K using system font — clean anti-aliased rendering
+    # Bahnschrift — modern geometric DIN-like font
     try:
-        font = ImageFont.truetype("segoeuib.ttf", int(42 * s))
+        font = ImageFont.truetype("bahnschrift.ttf", int(42 * s))
     except Exception:
         try:
-            font = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", int(42 * s))
+            font = ImageFont.truetype("C:/Windows/Fonts/bahnschrift.ttf", int(42 * s))
         except Exception:
             font = ImageFont.load_default()
 

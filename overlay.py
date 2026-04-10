@@ -56,13 +56,16 @@ class KodaOverlay:
 
         SIZE = self._icon_size
 
+        KEY = "#010101"  # Transparent key color
         root.overrideredirect(True)
         root.attributes("-topmost", True)
         root.attributes("-toolwindow", True)
-        root.configure(bg="#1a1a2e")
+        root.attributes("-alpha", 0.85)
+        root.configure(bg=KEY)
+        root.attributes("-transparentcolor", KEY)
 
-        # Label to hold the icon image
-        self._label = tk.Label(root, bg="#1a1a2e", bd=0, highlightthickness=0)
+        # Label with transparent bg so rounded corners show through
+        self._label = tk.Label(root, bg=KEY, bd=0, highlightthickness=0)
         self._label.pack()
 
         # Render initial icon
