@@ -9,7 +9,7 @@
 ; Requires: Inno Setup 6 — https://jrsoftware.org/isdl.php
 
 #define MyAppName "Koda"
-#define MyAppVersion "4.0.0"
+#define MyAppVersion "4.1.0"
 #define MyAppPublisher "Alex Alternative"
 #define MyAppURL "https://github.com/Alex-Alternative/koda"
 #define MyAppExeName "Koda.exe"

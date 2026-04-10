@@ -44,7 +44,7 @@ logger = logging.getLogger("koda")
 logger.setLevel(logging.DEBUG)  # Koda's own logger is DEBUG, but library noise is WARNING+
 
 # --- Version ---
-VERSION = "4.0.0"
+VERSION = "4.1.0"
 
 # --- Globals ---
 recording = False
