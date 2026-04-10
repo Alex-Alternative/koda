@@ -925,11 +925,11 @@ def _build_hotkey_config():
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.log")
     return {
         "hotkey_dictation": config.get("hotkey_dictation", "ctrl+space"),
-        "hotkey_command": config.get("hotkey_command", "ctrl+alt+d"),
+        "hotkey_command": config.get("hotkey_command", "f8"),
         "hotkey_prompt": config.get("hotkey_prompt", "f9"),
-        "hotkey_correction": config.get("hotkey_correction", "ctrl+shift+z"),
-        "hotkey_readback": config.get("hotkey_readback", "ctrl+alt+r"),
-        "hotkey_readback_selected": config.get("hotkey_readback_selected", "ctrl+alt+t"),
+        "hotkey_correction": config.get("hotkey_correction", "f7"),
+        "hotkey_readback": config.get("hotkey_readback", "f6"),
+        "hotkey_readback_selected": config.get("hotkey_readback_selected", "f5"),
         "hotkey_mode": config.get("hotkey_mode", "hold"),
         "_log_path": log_path,
     }
@@ -1088,11 +1088,11 @@ def _watchdog_thread():
 
 def build_menu():
     hotkey_dict = config.get("hotkey_dictation", "ctrl+space").upper()
-    hotkey_cmd = config.get("hotkey_command", "ctrl+alt+d").upper()
+    hotkey_cmd = config.get("hotkey_command", "f8").upper()
     hotkey_prompt = config.get("hotkey_prompt", "f9").upper()
-    hotkey_corr = config.get("hotkey_correction", "ctrl+shift+z").upper()
-    hotkey_read = config.get("hotkey_readback", "ctrl+shift+r").upper()
-    hotkey_read_sel = config.get("hotkey_readback_selected", "ctrl+shift+t").upper()
+    hotkey_corr = config.get("hotkey_correction", "f7").upper()
+    hotkey_read = config.get("hotkey_readback", "f6").upper()
+    hotkey_read_sel = config.get("hotkey_readback_selected", "f5").upper()
     mode = config.get("hotkey_mode", "hold")
     mode_label = "Hold-to-talk" if mode == "hold" else "Toggle (auto-stop)"
     wake_enabled = config.get("wake_word", {}).get("enabled", False)
