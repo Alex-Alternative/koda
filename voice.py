@@ -32,6 +32,7 @@ from profiles import ProfileMonitor
 from voice_commands import extract_and_execute_commands
 from stats import init_stats_db as init_stats, log_transcription_stats, log_command_stats
 from plugin_manager import PluginManager
+from prompt_assist import refine_prompt
 
 
 # --- Logging ---
@@ -508,7 +509,8 @@ def start_recording(mode="dictation", force_vad=False, vad_timeout_ms=None):
     recording = True
 
     play_start_sound()
-    label = "Dictation" if mode == "dictation" else "Command"
+    labels = {"dictation": "Dictation", "command": "Command", "prompt": "Prompt Assist"}
+    label = labels.get(mode, mode.title())
     update_tray("#e74c3c", f"Koda: Recording ({label})...")
 
     # Start streaming transcription in background
@@ -618,7 +620,11 @@ def _transcribe_and_paste():
             logger.debug("After custom vocab: %r", text)
 
         # Post-processing
-        if recording_mode == "command":
+        if recording_mode == "prompt":
+            # Prompt Assist mode — structure speech into an effective LLM prompt
+            update_tray("#f39c12", "Koda: Refining prompt...")
+            processed = refine_prompt(text, config)
+        elif recording_mode == "command":
             processed = process_text(text, config)
             # LLM polish for command mode
             processed = polish_with_llm(processed)
@@ -892,6 +898,16 @@ def _hotkey_event_thread():
                     threading.Thread(target=stop_recording, daemon=True).start()
                 else:
                     start_recording("command")
+            elif event == "prompt_press":
+                start_recording("prompt")
+            elif event == "prompt_release":
+                if recording:
+                    threading.Thread(target=stop_recording, daemon=True).start()
+            elif event == "prompt_toggle":
+                if recording:
+                    threading.Thread(target=stop_recording, daemon=True).start()
+                else:
+                    start_recording("prompt")
             elif event == "correction":
                 threading.Thread(target=undo_and_rerecord, daemon=True).start()
             elif event == "readback":
@@ -910,6 +926,7 @@ def _build_hotkey_config():
     return {
         "hotkey_dictation": config.get("hotkey_dictation", "ctrl+space"),
         "hotkey_command": config.get("hotkey_command", "ctrl+shift+."),
+        "hotkey_prompt": config.get("hotkey_prompt", "ctrl+shift+p"),
         "hotkey_correction": config.get("hotkey_correction", "ctrl+shift+z"),
         "hotkey_readback": config.get("hotkey_readback", "ctrl+alt+r"),
         "hotkey_readback_selected": config.get("hotkey_readback_selected", "ctrl+alt+t"),
@@ -1072,6 +1089,7 @@ def _watchdog_thread():
 def build_menu():
     hotkey_dict = config.get("hotkey_dictation", "ctrl+space").upper()
     hotkey_cmd = config.get("hotkey_command", "ctrl+shift+.").upper()
+    hotkey_prompt = config.get("hotkey_prompt", "ctrl+shift+p").upper()
     hotkey_corr = config.get("hotkey_correction", "ctrl+shift+z").upper()
     hotkey_read = config.get("hotkey_readback", "ctrl+shift+r").upper()
     hotkey_read_sel = config.get("hotkey_readback_selected", "ctrl+shift+t").upper()
@@ -1084,8 +1102,8 @@ def build_menu():
     return pystray.Menu(
         pystray.MenuItem(f"Koda v{VERSION}", None, enabled=False),
         pystray.MenuItem(f"{hotkey_dict} = Dictation  |  {hotkey_cmd} = Command", None, enabled=False),
-        pystray.MenuItem(f"{hotkey_corr} = Redo  |  {hotkey_read} = Read back", None, enabled=False),
-        pystray.MenuItem(f"{hotkey_read_sel} = Read selected  |  Mode: {mode_label}", None, enabled=False),
+        pystray.MenuItem(f"{hotkey_prompt} = Prompt Assist  |  {hotkey_corr} = Redo", None, enabled=False),
+        pystray.MenuItem(f"{hotkey_read} = Read back  |  Mode: {mode_label}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(
             "Sound effects",

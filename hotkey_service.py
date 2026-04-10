@@ -97,6 +97,7 @@ def service_main(conn, hotkey_config):
     # --- Read config ---
     hotkey_dict = hotkey_config.get("hotkey_dictation", "ctrl+space")
     hotkey_cmd = hotkey_config.get("hotkey_command", "ctrl+shift+.")
+    hotkey_prompt = hotkey_config.get("hotkey_prompt", "ctrl+shift+p")
     hotkey_correct = hotkey_config.get("hotkey_correction", "ctrl+shift+z")
     hotkey_read = hotkey_config.get("hotkey_readback", "ctrl+alt+r")
     hotkey_read_sel = hotkey_config.get("hotkey_readback_selected", "ctrl+alt+t")
@@ -106,9 +107,11 @@ def service_main(conn, hotkey_config):
     if mode == "hold":
         register_hotkey(hotkey_dict, "dictation_press", "dictation_release")
         register_hotkey(hotkey_cmd, "command_press", "command_release")
+        register_hotkey(hotkey_prompt, "prompt_press", "prompt_release")
     else:
         register_hotkey(hotkey_dict, "dictation_toggle")
         register_hotkey(hotkey_cmd, "command_toggle")
+        register_hotkey(hotkey_prompt, "prompt_toggle")
 
     register_hotkey(hotkey_correct, "correction")
     register_hotkey(hotkey_read, "readback")
