@@ -892,6 +892,9 @@ def _hotkey_event_thread():
                 logger.info("Hotkey service reports ready")
             elif event == "pong":
                 _hotkey_pong.set()  # Signal watchdog that service is responsive
+            elif event == "hooks_dead":
+                logger.warning("Hotkey service reports hooks are dead — triggering restart")
+                threading.Thread(target=setup_hotkeys, daemon=True).start()
             elif event == "dictation_press":
                 start_recording("dictation")
             elif event == "dictation_release":
@@ -1124,8 +1127,8 @@ def _watchdog_thread():
                         setup_hotkeys()
                         error_notify("Hotkeys recovered automatically. You're good to go.")
                         update_tray("#2ecc71", "Koda: Ready (recovered)")
-                    elif check_count % 4 == 0 and _hotkey_conn is not None:
-                        # Ping the service every ~60s to verify it's responsive
+                    elif check_count % 2 == 0 and _hotkey_conn is not None:
+                        # Ping the service every ~30s to verify hooks are alive
                         try:
                             _hotkey_pong.clear()
                             _hotkey_conn.send("ping")

@@ -120,6 +120,26 @@ def service_main(conn, hotkey_config):
     logger.info("Hotkey service ready (mode=%s, pid=%d)", mode, os.getpid())
     send_event("ready")
 
+    def _hooks_alive():
+        """Check if keyboard hooks are still active.
+
+        The keyboard library uses a listener thread with a Windows hook.
+        If Windows killed the hook, the listener thread dies or the hook
+        handle becomes invalid. We check both.
+        """
+        try:
+            # keyboard._listener is the hook thread — if it's dead, hooks are dead
+            listener = getattr(keyboard, '_listener', None)
+            if listener is not None and hasattr(listener, 'is_alive'):
+                if not listener.is_alive():
+                    return False
+            # Also check if any hooks are registered
+            if not keyboard._hooks:
+                return False
+            return True
+        except Exception:
+            return True  # If we can't check, assume alive
+
     # --- Event loop: respond to parent commands ---
     try:
         while True:
@@ -130,7 +150,13 @@ def service_main(conn, hotkey_config):
                         logger.info("Hotkey service shutting down (quit command)")
                         break
                     elif cmd == "ping":
-                        send_event("pong")
+                        if _hooks_alive():
+                            send_event("pong")
+                        else:
+                            # Don't respond with pong — parent will detect timeout
+                            # and restart us. This is the right thing to do.
+                            logger.warning("Hooks appear dead — not responding to ping (will be restarted)")
+                            send_event("hooks_dead")
             except EOFError:
                 logger.warning("Hotkey service: parent pipe closed, exiting")
                 break
