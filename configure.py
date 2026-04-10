@@ -138,24 +138,17 @@ def setup_microphone():
 # STEP 2: HOTKEYS
 # ============================================================
 
-HOTKEY_OPTIONS = [
-    ("Ctrl + Space", "ctrl+space"),
-    ("Ctrl + Period (.)", "ctrl+."),
-    ("Ctrl + Semicolon (;)", "ctrl+;"),
-    ("Ctrl + Shift + Space", "ctrl+shift+space"),
-    ("Alt + Space", "alt+space"),
-    ("F9", "f9"),
-    ("F8", "f8"),
-    ("Scroll Lock", "scroll lock"),
+FKEY_OPTIONS = [
+    ("F5", "f5"), ("F6", "f6"), ("F7", "f7"), ("F8", "f8"),
+    ("F9", "f9"), ("F10", "f10"), ("F11", "f11"), ("F12", "f12"),
 ]
 
-COMMAND_HOTKEY_OPTIONS = [
-    ("Ctrl + Shift + Period (.)", "ctrl+shift+."),
-    ("Ctrl + Shift + Semicolon (;)", "ctrl+shift+;"),
-    ("Ctrl + Alt + Space", "ctrl+alt+space"),
-    ("Alt + Period (.)", "alt+."),
+DICTATION_OPTIONS = [
+    ("Ctrl + Space", "ctrl+space"),
+    ("F8", "f8"),
+    ("F9", "f9"),
     ("F10", "f10"),
-    ("F7", "f7"),
+    ("Ctrl + Alt + D", "ctrl+alt+d"),
 ]
 
 
@@ -164,30 +157,61 @@ def setup_hotkeys():
     banner()
     print("  STEP 2 of 8: HOTKEYS\n")
     print("  ─────────────────────────────────────────\n")
-    print("  Koda has two modes:\n")
-    print("    Dictation — pastes what you say (light cleanup)")
-    print("    Command   — cleans up speech for coding (removes fillers, etc.)\n")
-    print("  Each mode needs its own hotkey.\n")
+    print("  Koda has three voice modes plus utility keys.\n")
+    print("  Defaults use Ctrl+Space for dictation and F-keys")
+    print("  for everything else. You can customize each one.\n")
 
-    print("  ── Dictation hotkey (main one you'll use) ──\n")
+    # --- Dictation (main) ---
+    print("  ── Dictation (main, most used) ──\n")
     dictation = ask_choice(
         "Pick your dictation hotkey:",
-        HOTKEY_OPTIONS,
+        DICTATION_OPTIONS,
         default=0,  # Ctrl+Space
     )
-
     print(f"\n  Dictation: {dictation}\n")
 
-    print("  ── Command hotkey (for coding tasks) ──\n")
-    command = ask_choice(
-        "Pick your command hotkey:",
-        COMMAND_HOTKEY_OPTIONS,
-        default=0,  # Ctrl+Shift+Period
-    )
+    # --- Customize the rest? ---
+    print("  ── Other hotkeys ──\n")
+    print("  Defaults:")
+    print("    F8  = Command mode (cleaned up text)")
+    print("    F9  = Prompt Assist (structures speech for LLMs)")
+    print("    F7  = Correction (undo last paste, re-record)")
+    print("    F6  = Read back last transcription")
+    print("    F5  = Read selected text aloud\n")
 
-    print(f"\n  Command: {command}\n")
+    customize = ask_yes_no("Customize these? (or keep defaults)", default=False)
+
+    command = "f8"
+    prompt = "f9"
+    correction = "f7"
+    readback = "f6"
+    readback_sel = "f5"
+
+    if customize:
+        print("\n  Pick an F-key for each function:\n")
+
+        print("  ── Command mode (cleaned up text for coding) ──\n")
+        command = ask_choice("Command hotkey:", FKEY_OPTIONS, default=3)  # F8
+        print()
+
+        print("  ── Prompt Assist (structures speech for LLMs) ──\n")
+        prompt = ask_choice("Prompt Assist hotkey:", FKEY_OPTIONS, default=4)  # F9
+        print()
+
+        print("  ── Correction (undo + re-record) ──\n")
+        correction = ask_choice("Correction hotkey:", FKEY_OPTIONS, default=2)  # F7
+        print()
+
+        print("  ── Read back (read last transcription aloud) ──\n")
+        readback = ask_choice("Read back hotkey:", FKEY_OPTIONS, default=1)  # F6
+        print()
+
+        print("  ── Read selected (read highlighted text aloud) ──\n")
+        readback_sel = ask_choice("Read selected hotkey:", FKEY_OPTIONS, default=0)  # F5
+
+    print()
     input("  Press Enter to continue...")
-    return dictation, command
+    return dictation, command, prompt, correction, readback, readback_sel
 
 
 # ============================================================
@@ -374,8 +398,12 @@ def show_summary_and_save(config):
     print("  ─────────────────────────────────────────\n")
     print("  Your settings:\n")
     print(f"    Microphone:       {'System default' if config['mic_device'] is None else 'Device #' + str(config['mic_device'])}")
-    print(f"    Dictation hotkey: {config['hotkey_dictation']}")
-    print(f"    Command hotkey:   {config['hotkey_command']}")
+    print(f"    Dictation:        {config['hotkey_dictation']}")
+    print(f"    Command:          {config['hotkey_command']}")
+    print(f"    Prompt Assist:    {config['hotkey_prompt']}")
+    print(f"    Correction:       {config['hotkey_correction']}")
+    print(f"    Read back:        {config['hotkey_readback']}")
+    print(f"    Read selected:    {config['hotkey_readback_selected']}")
     print(f"    Recording mode:   {config['hotkey_mode']}")
     print(f"    Speech model:     {config['model_size']}")
     print(f"    Language:         {config['language']}")
@@ -384,7 +412,6 @@ def show_summary_and_save(config):
     print(f"    Noise reduction:  {'On' if config['noise_reduction'] else 'Off'}")
     print(f"    Wake word:        {'On (\"Hey Koda\")' if config['wake_word']['enabled'] else 'Off'}")
     print(f"    LLM polish:       {'On (' + config['llm_polish']['model'] + ')' if config['llm_polish']['enabled'] else 'Off'}")
-    print(f"    Correction key:   {config['hotkey_correction']}")
     print()
 
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -408,7 +435,7 @@ def main():
 
     # Run each step
     mic_device = setup_microphone()
-    hotkey_dict, hotkey_cmd = setup_hotkeys()
+    hotkey_dict, hotkey_cmd, hotkey_prompt, hotkey_corr, hotkey_read, hotkey_read_sel = setup_hotkeys()
     mode = setup_mode()
     model_size = setup_model()
     language = setup_language()
@@ -422,7 +449,10 @@ def main():
         "language": language,
         "hotkey_dictation": hotkey_dict,
         "hotkey_command": hotkey_cmd,
-        "hotkey_correction": "ctrl+shift+z",
+        "hotkey_prompt": hotkey_prompt,
+        "hotkey_correction": hotkey_corr,
+        "hotkey_readback": hotkey_read,
+        "hotkey_readback_selected": hotkey_read_sel,
         "hotkey_mode": mode,
         "mic_device": mic_device,
         "sound_effects": sound,
