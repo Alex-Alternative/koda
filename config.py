@@ -11,6 +11,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
 DEFAULT_CONFIG = {
     "model_size": "base",
+    "compute_type": "int8",
     "language": "en",
     "output_mode": "auto_paste",
     "hotkey_dictation": "ctrl+space",

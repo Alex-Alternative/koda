@@ -7,10 +7,13 @@ import json
 import os
 import sys
 import time
+import webbrowser
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.json")
+
+CUDA_DOWNLOAD_URL = "https://developer.nvidia.com/cuda-downloads"
 
 
 def clear():
@@ -55,13 +58,173 @@ def ask_yes_no(prompt, default=True):
 
 
 # ============================================================
-# STEP 1: MICROPHONE
+# STEP 1: PERFORMANCE (GPU detection)
+# ============================================================
+
+def setup_performance():
+    """
+    Detect GPU and offer Standard vs Power Mode.
+    Returns (model_size, compute_type) or (None, "int8") to let setup_model() decide.
+    Bucket A — CUDA ready:       offer Power Mode choice
+    Bucket B — NVIDIA, no CUDA:  offer to auto-install or show download URL
+    Bucket C — no GPU:           silent, return CPU defaults
+    """
+    from hardware import detect_gpu, get_nvidia_gpu_name, try_install_cuda_packages
+
+    print("  Checking your hardware...", end="", flush=True)
+    status = detect_gpu()
+    print(" done.\n")
+
+    # ── Bucket C: no GPU — silent ────────────────────────────
+    if status == "none":
+        return None, "int8"
+
+    gpu_name = get_nvidia_gpu_name() or "NVIDIA GPU"
+
+    # ── Bucket A: CUDA ready — offer Power Mode ──────────────
+    if status == "cuda_ready":
+        clear()
+        banner()
+        print("  STEP 1 of 9: PERFORMANCE\n")
+        print("  ─────────────────────────────────────────\n")
+        print(f"  Great news — your computer supports Power Mode!\n")
+        print(f"  Detected: {gpu_name}\n")
+        print("  Standard Mode          Power Mode")
+        print("  ───────────────────    ──────────────────────")
+        print("  Good accuracy          Excellent accuracy")
+        print("  ~1-2 sec response      Near-instant response")
+        print("  Works on any PC        Uses your NVIDIA GPU\n")
+
+        choice = ask_choice(
+            "Which mode would you like?",
+            [
+                ("Power Mode  — faster and smarter (recommended for your PC)", "power"),
+                ("Standard Mode — works great on any computer", "standard"),
+            ],
+            default=0,
+        )
+        print()
+        input("  Press Enter to continue...")
+
+        if choice == "power":
+            return "large-v3-turbo", "float16"
+        return None, "int8"
+
+    # ── Bucket B: NVIDIA present but CUDA not set up ─────────
+    clear()
+    banner()
+    print("  STEP 1 of 9: PERFORMANCE\n")
+    print("  ─────────────────────────────────────────\n")
+    print(f"  We found an NVIDIA GPU on your machine ({gpu_name}).")
+    print("  Power Mode needs one extra piece to work.\n")
+    print("  Power Mode gives you:")
+    print("    - Near-instant transcription (vs ~1-2 seconds)")
+    print("    - Excellent accuracy with a larger speech model\n")
+
+    choice = ask_choice(
+        "What would you like to do?",
+        [
+            ("Try to set it up automatically  (downloads ~400MB)", "auto"),
+            ("Skip for now — use Standard Mode", "skip"),
+            ("Show me how to set it up myself", "manual"),
+        ],
+        default=0,
+    )
+
+    if choice == "auto":
+        print("\n  Installing GPU support — this may take a few minutes...")
+        print("  (downloading NVIDIA runtime packages)\n")
+        success = try_install_cuda_packages()
+        if success:
+            print("  GPU support installed successfully!\n")
+            print("  Standard Mode          Power Mode")
+            print("  ───────────────────    ──────────────────────")
+            print("  Good accuracy          Excellent accuracy")
+            print("  ~1-2 sec response      Near-instant response\n")
+            confirm = ask_choice(
+                "Power Mode is ready. Which would you like?",
+                [
+                    ("Power Mode  — faster and smarter (recommended)", "power"),
+                    ("Standard Mode", "standard"),
+                ],
+                default=0,
+            )
+            print()
+            input("  Press Enter to continue...")
+            if confirm == "power":
+                return "large-v3-turbo", "float16"
+            return None, "int8"
+        else:
+            print("  Automatic setup didn't work on this system.\n")
+            print("  You can still enable Power Mode manually:")
+            print(f"    1. Download and install the NVIDIA CUDA Toolkit from:")
+            print(f"       {CUDA_DOWNLOAD_URL}")
+            print("    2. Restart Koda")
+            print("    3. Open Settings and switch to Power Mode\n")
+            print("  Saving instructions to: ENABLE_POWER_MODE.txt\n")
+            _save_power_mode_instructions(gpu_name)
+            open_browser = ask_yes_no("Open the NVIDIA download page in your browser now?", default=True)
+            if open_browser:
+                webbrowser.open(CUDA_DOWNLOAD_URL)
+            input("\n  Press Enter to continue with Standard Mode...")
+            return None, "int8"
+
+    elif choice == "manual":
+        print()
+        print("  To enable Power Mode:")
+        print(f"    1. Download the NVIDIA CUDA Toolkit (free):")
+        print(f"       {CUDA_DOWNLOAD_URL}")
+        print("    2. Install it and restart your computer")
+        print("    3. Open Koda Settings and click 'Enable Power Mode'\n")
+        print("  Saving these instructions to: ENABLE_POWER_MODE.txt\n")
+        _save_power_mode_instructions(gpu_name)
+        open_browser = ask_yes_no("Open the NVIDIA download page now?", default=True)
+        if open_browser:
+            webbrowser.open(CUDA_DOWNLOAD_URL)
+        input("\n  Press Enter to continue with Standard Mode...")
+        return None, "int8"
+
+    # choice == "skip"
+    print()
+    input("  Press Enter to continue with Standard Mode...")
+    return None, "int8"
+
+
+def _save_power_mode_instructions(gpu_name):
+    """Write a plain-text reminder file to the koda folder."""
+    path = os.path.join(SCRIPT_DIR, "ENABLE_POWER_MODE.txt")
+    lines = [
+        "Koda Power Mode — Setup Instructions",
+        "=" * 40,
+        "",
+        f"Your GPU: {gpu_name}",
+        "",
+        "Power Mode gives Koda near-instant transcription and better accuracy.",
+        "To enable it:",
+        "",
+        "  1. Download the NVIDIA CUDA Toolkit (free) from:",
+        f"     {CUDA_DOWNLOAD_URL}",
+        "",
+        "  2. Install it and restart your computer.",
+        "",
+        "  3. Open Koda Settings (right-click the tray icon > Settings)",
+        "     and click 'Enable Power Mode' in the Performance section.",
+        "",
+        "  That's it — Koda will switch to Power Mode automatically.",
+        "",
+    ]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+# ============================================================
+# STEP 2: MICROPHONE
 # ============================================================
 
 def setup_microphone():
     clear()
     banner()
-    print("  STEP 1 of 8: MICROPHONE\n")
+    print("  STEP 2 of 9: MICROPHONE\n")
     print("  ─────────────────────────────────────────\n")
 
     import sounddevice as sd
@@ -155,7 +318,7 @@ DICTATION_OPTIONS = [
 def setup_hotkeys():
     clear()
     banner()
-    print("  STEP 2 of 8: HOTKEYS\n")
+    print("  STEP 3 of 9: HOTKEYS\n")
     print("  ─────────────────────────────────────────\n")
     print("  Koda uses hotkeys to control voice input.")
     print("  Ctrl+Space for main dictation, F-keys for the rest.\n")
@@ -242,7 +405,7 @@ def setup_hotkeys():
 def setup_mode():
     clear()
     banner()
-    print("  STEP 3 of 8: RECORDING MODE\n")
+    print("  STEP 4 of 9: RECORDING MODE\n")
     print("  ─────────────────────────────────────────\n")
 
     mode = ask_choice(
@@ -266,7 +429,7 @@ def setup_mode():
 def setup_model():
     clear()
     banner()
-    print("  STEP 4 of 8: SPEECH MODEL\n")
+    print("  STEP 5 of 9: SPEECH MODEL\n")
     print("  ─────────────────────────────────────────\n")
     print("  Larger models are more accurate but slower.\n")
 
@@ -298,7 +461,7 @@ def setup_model():
 def setup_language():
     clear()
     banner()
-    print("  STEP 5 of 8: LANGUAGE\n")
+    print("  STEP 6 of 9: LANGUAGE\n")
     print("  ─────────────────────────────────────────\n")
 
     lang = ask_choice(
@@ -336,7 +499,7 @@ def setup_language():
 def setup_preferences():
     clear()
     banner()
-    print("  STEP 6 of 8: PREFERENCES\n")
+    print("  STEP 7 of 9: PREFERENCES\n")
     print("  ─────────────────────────────────────────\n")
 
     sound = ask_yes_no("Enable sound effects? (beeps when recording starts/stops)", default=True)
@@ -355,7 +518,7 @@ def setup_preferences():
 def setup_wake_word():
     clear()
     banner()
-    print("  STEP 7 of 8: WAKE WORD\n")
+    print("  STEP 8 of 9: WAKE WORD\n")
     print("  ─────────────────────────────────────────\n")
     print('  Say "Hey Koda" to start recording hands-free.')
     print("  No need to press any keys — just speak the wake word.\n")
@@ -375,7 +538,7 @@ def setup_wake_word():
 def setup_llm():
     clear()
     banner()
-    print("  STEP 8 of 8: AI PROMPT POLISHING\n")
+    print("  STEP 9 of 9: AI PROMPT POLISHING\n")
     print("  ─────────────────────────────────────────\n")
     print("  When enabled, Koda uses a local AI model (via Ollama) to")
     print("  clean up your speech into clear, concise instructions.\n")
@@ -426,6 +589,8 @@ def show_summary_and_save(config):
     print(f"    Read back:        {config['hotkey_readback']}")
     print(f"    Read selected:    {config['hotkey_readback_selected']}")
     print(f"    Recording mode:   {config['hotkey_mode']}")
+    perf_label = "Power Mode (NVIDIA GPU)" if config.get("compute_type") == "float16" else "Standard Mode (CPU)"
+    print(f"    Performance:      {perf_label}")
     print(f"    Speech model:     {config['model_size']}")
     print(f"    Language:         {config['language']}")
     print(f"    Sound effects:    {'On' if config['sound_effects'] else 'Off'}")
@@ -455,18 +620,24 @@ def main():
     input("  Press Enter to begin...")
 
     # Run each step
-    mic_device = setup_microphone()
-    hotkey_dict, hotkey_cmd, hotkey_prompt, hotkey_corr, hotkey_read, hotkey_read_sel = setup_hotkeys()
-    mode = setup_mode()
-    model_size = setup_model()
-    language = setup_language()
-    sound, fillers, noise, auto_start = setup_preferences()
-    wake_word_enabled = setup_wake_word()
-    llm_enabled, llm_model = setup_llm()
+    perf_model, compute_type = setup_performance()  # Step 1 — silent for no-GPU users
+    mic_device = setup_microphone()                 # Step 2
+    hotkey_dict, hotkey_cmd, hotkey_prompt, hotkey_corr, hotkey_read, hotkey_read_sel = setup_hotkeys()  # Step 3
+    mode = setup_mode()                             # Step 4
+    # Step 5 — skip model picker if performance step already chose one (Power Mode)
+    if perf_model is not None:
+        model_size = perf_model
+    else:
+        model_size = setup_model()
+    language = setup_language()                     # Step 6
+    sound, fillers, noise, auto_start = setup_preferences()  # Step 7
+    wake_word_enabled = setup_wake_word()           # Step 8
+    llm_enabled, llm_model = setup_llm()            # Step 9
 
     # Build config
     config = {
         "model_size": model_size,
+        "compute_type": compute_type,
         "language": language,
         "hotkey_dictation": hotkey_dict,
         "hotkey_command": hotkey_cmd,

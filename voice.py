@@ -250,20 +250,39 @@ def load_whisper_model():
     global model
     from faster_whisper import WhisperModel
     model_size = config.get("model_size", "small")
+    compute_type = config.get("compute_type", "int8")
+    device = "cuda" if compute_type == "float16" else "cpu"
+
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    bundled = os.path.join(base_dir, f"_model_{model_size}")
+
+    def _load(m_size, dev, c_type):
+        b = os.path.join(base_dir, f"_model_{m_size}")
+        if os.path.isdir(b):
+            return WhisperModel(b, device=dev, compute_type=c_type)
+        return WhisperModel(m_size, device=dev, compute_type=c_type)
 
     try:
-        # When running as PyInstaller exe, use the bundled model
-        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-        bundled = os.path.join(base_dir, f"_model_{model_size}")
-        if os.path.isdir(bundled):
-            model = WhisperModel(bundled, device="cpu", compute_type="int8")
-        else:
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        logger.info("Whisper model '%s' loaded successfully", model_size)
+        model = _load(model_size, device, compute_type)
+        logger.info("Whisper model '%s' loaded (device=%s, compute=%s)", model_size, device, compute_type)
     except Exception as e:
-        logger.error("Failed to load Whisper model: %s", e, exc_info=True)
-        error_notify(f"Failed to load speech model '{model_size}'. Check internet connection for first download.")
-        raise
+        if device == "cuda":
+            # GPU failed — fall back to CPU Standard Mode automatically
+            logger.warning("GPU load failed (%s) — falling back to CPU Standard Mode", e)
+            error_notify("GPU unavailable — Koda switched to Standard Mode.")
+            try:
+                model = _load("small", "cpu", "int8")
+                config["compute_type"] = "int8"
+                config["model_size"] = "small"
+                logger.info("Fallback to small/cpu/int8 succeeded")
+            except Exception as e2:
+                logger.error("Fallback model load also failed: %s", e2, exc_info=True)
+                error_notify("Failed to load speech model. Check your installation.")
+                raise
+        else:
+            logger.error("Failed to load Whisper model: %s", e, exc_info=True)
+            error_notify(f"Failed to load speech model '{model_size}'. Check internet connection for first download.")
+            raise
 
 
 # ============================================================
