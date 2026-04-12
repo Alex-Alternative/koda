@@ -26,14 +26,17 @@ def save_config(cfg):
 
 
 class KodaSettings(tk.Tk):
+    CUSTOM_WORDS_PATH = os.path.join(SCRIPT_DIR, "custom_words.json")
+
     def __init__(self):
         super().__init__()
         self.title("Koda Settings")
-        self.geometry("520x1020")
+        self.geometry("520x1120")
         self.resizable(False, False)
         self.configure(bg="#1e1e2e")
 
         self.config_data = load_config()
+        self._custom_words = self._load_custom_words_data()
 
         # Style
         style = ttk.Style()
@@ -141,10 +144,37 @@ class KodaSettings(tk.Tk):
         cw_frame = ttk.Frame(main)
         cw_frame.pack(fill="x", pady=2)
         ttk.Label(cw_frame, text="Replace misheard words with correct versions:").pack(anchor="w")
-        btn_row = ttk.Frame(cw_frame)
-        btn_row.pack(anchor="w", pady=(5, 0))
-        ttk.Button(btn_row, text="Edit custom_words.json", command=self._open_custom_words).pack(side="left", padx=(0, 10))
-        ttk.Button(btn_row, text="Edit profiles.json", command=self._open_profiles).pack(side="left")
+
+        tree_frame = ttk.Frame(cw_frame)
+        tree_frame.pack(fill="x", pady=(5, 0))
+
+        self._vocab_tree = ttk.Treeview(
+            tree_frame, columns=("misheard", "correct"), show="headings", height=5,
+            selectmode="browse",
+        )
+        self._vocab_tree.heading("misheard", text="Misheard")
+        self._vocab_tree.heading("correct", text="Correct")
+        self._vocab_tree.column("misheard", width=230, anchor="w")
+        self._vocab_tree.column("correct", width=230, anchor="w")
+        self._vocab_tree.pack(side="left", fill="x", expand=True)
+
+        vocab_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self._vocab_tree.yview)
+        self._vocab_tree.configure(yscrollcommand=vocab_scroll.set)
+        vocab_scroll.pack(side="left", fill="y")
+
+        self._refresh_vocab_tree()
+
+        vocab_btn_row = ttk.Frame(cw_frame)
+        vocab_btn_row.pack(anchor="w", pady=(4, 0))
+        ttk.Button(vocab_btn_row, text="Add", command=self._add_vocab_entry).pack(side="left", padx=(0, 4))
+        ttk.Button(vocab_btn_row, text="Edit", command=self._edit_vocab_entry).pack(side="left", padx=(0, 4))
+        ttk.Button(vocab_btn_row, text="Remove", command=self._remove_vocab_entry).pack(side="left", padx=(0, 12))
+        ttk.Button(vocab_btn_row, text="Import", command=self._import_vocab).pack(side="left", padx=(0, 4))
+        ttk.Button(vocab_btn_row, text="Export", command=self._export_vocab).pack(side="left")
+
+        profiles_row = ttk.Frame(cw_frame)
+        profiles_row.pack(anchor="w", pady=(6, 0))
+        ttk.Button(profiles_row, text="Edit profiles.json", command=self._open_profiles).pack(side="left")
 
         # --- Toggles ---
         ttk.Label(main, text="FEATURES", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
@@ -305,6 +335,7 @@ class KodaSettings(tk.Tk):
         tts["rate"] = self.speed_var.get()
 
         save_config(cfg)
+        self._save_custom_words_data()
         messagebox.showinfo("Koda", "Settings saved! Restart Koda for changes to take effect.")
 
     def save_and_restart(self):
@@ -337,6 +368,137 @@ class KodaSettings(tk.Tk):
             from profiles import load_profiles
             load_profiles()  # Creates default file
         os.startfile(profiles_path)
+
+    # --- Custom Vocabulary CRUD ---
+
+    def _load_custom_words_data(self):
+        """Load custom_words.json into an ordered dict."""
+        if os.path.exists(self.CUSTOM_WORDS_PATH):
+            try:
+                with open(self.CUSTOM_WORDS_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return dict(data) if isinstance(data, dict) else {}
+            except Exception:
+                pass
+        return {"coda": "Koda", "claude code": "Claude Code"}
+
+    def _save_custom_words_data(self):
+        """Write _custom_words back to custom_words.json."""
+        with open(self.CUSTOM_WORDS_PATH, "w", encoding="utf-8") as f:
+            json.dump(self._custom_words, f, indent=2)
+
+    def _refresh_vocab_tree(self):
+        """Repopulate the Treeview from _custom_words."""
+        self._vocab_tree.delete(*self._vocab_tree.get_children())
+        for misheard, correct in self._custom_words.items():
+            self._vocab_tree.insert("", "end", values=(misheard, correct))
+
+    def _vocab_dialog(self, title, misheard="", correct=""):
+        """Show a small dialog for Add/Edit. Returns (misheard, correct) or None."""
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.geometry("360x140")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#1e1e2e")
+        dlg.grab_set()
+
+        result = [None]
+
+        ttk.Label(dlg, text="Misheard word/phrase:").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 4))
+        mis_var = tk.StringVar(value=misheard)
+        mis_entry = ttk.Entry(dlg, textvariable=mis_var, width=28)
+        mis_entry.grid(row=0, column=1, padx=(0, 12), pady=(14, 4))
+
+        ttk.Label(dlg, text="Replace with:").grid(row=1, column=0, sticky="w", padx=12, pady=4)
+        cor_var = tk.StringVar(value=correct)
+        cor_entry = ttk.Entry(dlg, textvariable=cor_var, width=28)
+        cor_entry.grid(row=1, column=1, padx=(0, 12), pady=4)
+
+        def on_ok(*_):
+            m = mis_var.get().strip().lower()
+            c = cor_var.get().strip()
+            if not m or not c:
+                messagebox.showwarning("Koda", "Both fields are required.", parent=dlg)
+                return
+            result[0] = (m, c)
+            dlg.destroy()
+
+        btn_row = ttk.Frame(dlg)
+        btn_row.grid(row=2, column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(btn_row, text="OK", command=on_ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", command=dlg.destroy).pack(side="left")
+
+        mis_entry.focus_set()
+        cor_entry.bind("<Return>", on_ok)
+        mis_entry.bind("<Return>", lambda e: cor_entry.focus_set())
+
+        dlg.wait_window()
+        return result[0]
+
+    def _add_vocab_entry(self):
+        pair = self._vocab_dialog("Add Custom Word")
+        if pair:
+            misheard, correct = pair
+            self._custom_words[misheard] = correct
+            self._refresh_vocab_tree()
+
+    def _edit_vocab_entry(self):
+        sel = self._vocab_tree.selection()
+        if not sel:
+            messagebox.showinfo("Koda", "Select an entry to edit.", parent=self)
+            return
+        old_mis, old_cor = self._vocab_tree.item(sel[0], "values")
+        pair = self._vocab_dialog("Edit Custom Word", old_mis, old_cor)
+        if pair:
+            new_mis, new_cor = pair
+            if old_mis != new_mis:
+                del self._custom_words[old_mis]
+            self._custom_words[new_mis] = new_cor
+            self._refresh_vocab_tree()
+
+    def _remove_vocab_entry(self):
+        sel = self._vocab_tree.selection()
+        if not sel:
+            messagebox.showinfo("Koda", "Select an entry to remove.", parent=self)
+            return
+        misheard, _ = self._vocab_tree.item(sel[0], "values")
+        self._custom_words.pop(misheard, None)
+        self._refresh_vocab_tree()
+
+    def _import_vocab(self):
+        filepath = filedialog.askopenfilename(
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Import Custom Words",
+            parent=self,
+        )
+        if not filepath:
+            return
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("Expected a JSON object")
+            self._custom_words.update({k.lower(): v for k, v in data.items()})
+            self._refresh_vocab_tree()
+            messagebox.showinfo("Koda", f"Imported {len(data)} entries.", parent=self)
+        except Exception as e:
+            messagebox.showerror("Koda", f"Import failed: {e}", parent=self)
+
+    def _export_vocab(self):
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Export Custom Words",
+            parent=self,
+        )
+        if not filepath:
+            return
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(self._custom_words, f, indent=2)
+            messagebox.showinfo("Koda", f"Exported to:\n{filepath}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Koda", f"Export failed: {e}", parent=self)
 
     def _open_history(self):
         """Open a simple history viewer window."""

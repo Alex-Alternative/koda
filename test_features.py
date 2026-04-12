@@ -776,5 +776,129 @@ class TestPromptAssist(unittest.TestCase):
         self.assertIn("explain", result.lower())
 
 
+# ============================================================
+# Custom Vocabulary Pipeline Wiring
+# ============================================================
+
+class TestCustomVocabularyPipeline(unittest.TestCase):
+    """Verify custom_vocabulary in config is applied by process_text()."""
+
+    BASE_CONFIG = {
+        "post_processing": {
+            "remove_filler_words": True,
+            "code_vocabulary": False,
+            "auto_capitalize": True,
+            "auto_format": True,
+        },
+        "custom_vocabulary": {"coda": "Koda"},
+    }
+
+    def _cfg(self, vocab):
+        """Return a config with the given custom_vocabulary dict."""
+        return {
+            "post_processing": {
+                "remove_filler_words": True,
+                "code_vocabulary": False,
+                "auto_capitalize": True,
+                "auto_format": True,
+            },
+            "custom_vocabulary": vocab,
+        }
+
+    # --- Basic wiring ---
+
+    def test_vocab_applied_via_process_text(self):
+        result = process_text("I use coda every day", self._cfg({"coda": "Koda"}))
+        self.assertEqual(result, "I use Koda every day")
+
+    def test_vocab_applied_last_after_capitalize(self):
+        # "coda" at sentence start gets capitalised to "Coda" then vocab corrects to "Koda"
+        result = process_text("coda is the best tool", self._cfg({"coda": "Koda"}))
+        self.assertEqual(result, "Koda is the best tool")
+
+    def test_vocab_multi_word_key(self):
+        result = process_text("I use claude code for everything", self._cfg({"claude code": "Claude Code"}))
+        self.assertIn("Claude Code", result)
+
+    def test_vocab_case_insensitive_in_pipeline(self):
+        result = process_text("CODA is great", self._cfg({"coda": "Koda"}))
+        self.assertEqual(result, "Koda is great")
+
+    def test_vocab_word_boundary_in_pipeline(self):
+        # "coda" inside "encodable" must NOT be replaced
+        result = process_text("the encodable format is used", self._cfg({"coda": "Koda"}))
+        self.assertNotIn("Koda", result)
+
+    # --- Edge cases ---
+
+    def test_vocab_empty_dict_no_change(self):
+        text = "Hello world"
+        result = process_text(text, self._cfg({}))
+        self.assertEqual(result, "Hello world")
+
+    def test_vocab_missing_key_no_error(self):
+        config = {
+            "post_processing": {
+                "remove_filler_words": False,
+                "auto_capitalize": False,
+                "auto_format": False,
+            }
+        }
+        result = process_text("hello world", config)
+        self.assertEqual(result, "hello world")
+
+    def test_vocab_no_match_text_unchanged(self):
+        result = process_text("nothing to replace here", self._cfg({"coda": "Koda"}))
+        self.assertEqual(result, "Nothing to replace here")
+
+    def test_vocab_multiple_entries_same_sentence(self):
+        vocab = {"coda": "Koda", "alt funding": "Alt Funding"}
+        result = process_text("coda is made by alt funding", self._cfg(vocab))
+        self.assertIn("Koda", result)
+        self.assertIn("Alt Funding", result)
+
+    # --- Pipeline interaction ---
+
+    def test_vocab_with_filler_removal(self):
+        result = process_text("um I love coda", self._cfg({"coda": "Koda"}))
+        self.assertNotIn("um", result)
+        self.assertIn("Koda", result)
+
+    def test_vocab_with_number_formatting(self):
+        result = process_text("we have one hundred coda users", self._cfg({"coda": "Koda"}))
+        self.assertIn("100", result)
+        self.assertIn("Koda", result)
+
+    def test_vocab_in_light_config(self):
+        # Dictation mode uses light_config — custom_vocabulary is a top-level key
+        light_config = {
+            "post_processing": {
+                "remove_filler_words": True,
+                "code_vocabulary": False,
+                "auto_capitalize": True,
+                "auto_format": False,
+            },
+            "custom_vocabulary": {"coda": "Koda"},
+        }
+        result = process_text("open coda please", light_config)
+        self.assertIn("Koda", result)
+
+    def test_vocab_no_post_processing_key(self):
+        # Config with only custom_vocabulary — pipeline should not crash
+        config = {"custom_vocabulary": {"coda": "Koda"}}
+        result = process_text("I use coda", config)
+        self.assertIn("Koda", result)
+
+    def test_vocab_replacement_survives_full_pipeline(self):
+        # Full pipeline: filler + capitalize + vocab
+        vocab = {"altfunding": "AltFunding"}
+        result = process_text("um we work at altfunding dot com", self._cfg(vocab))
+        self.assertNotIn("um", result)
+        self.assertIn("AltFunding", result)
+
+    def test_vocab_empty_text_returns_empty(self):
+        self.assertEqual(process_text("", self._cfg({"coda": "Koda"})), "")
+
+
 if __name__ == "__main__":
     unittest.main()

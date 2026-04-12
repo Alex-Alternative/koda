@@ -605,9 +605,6 @@ def _transcribe_and_paste():
             except Exception as e:
                 logger.warning("Noise reduction failed: %s", e)
 
-        # Load custom vocabulary for initial_prompt and post-processing
-        custom_words = _load_custom_words()
-
         # Build transcription kwargs
         translation_cfg = config.get("translation", {})
         translate_enabled = translation_cfg.get("enabled", False)
@@ -629,8 +626,9 @@ def _transcribe_and_paste():
                 transcribe_kwargs["language"] = language
 
         # Pass custom words as initial_prompt to bias Whisper recognition
-        if custom_words:
-            prompt_words = " ".join(custom_words.values())
+        custom_vocab = config.get("custom_vocabulary", {})
+        if custom_vocab:
+            prompt_words = " ".join(custom_vocab.values())
             transcribe_kwargs["initial_prompt"] = prompt_words
 
         # Transcribe with VAD filter + repetition penalty to prevent hallucinated repeats
@@ -648,14 +646,11 @@ def _transcribe_and_paste():
             update_tray("#2ecc71", "Koda: Ready")
             return
 
-        # Apply custom vocabulary replacements
-        if custom_words:
-            text = apply_custom_vocabulary(text, custom_words)
-            logger.debug("After custom vocab: %r", text)
-
         # Post-processing
         if recording_mode == "prompt":
-            # Prompt Assist mode — structure speech into an effective LLM prompt
+            # Prompt Assist mode — apply custom vocab then structure into an effective LLM prompt
+            if custom_vocab:
+                text = apply_custom_vocabulary(text, custom_vocab)
             update_tray("#f39c12", "Koda: Refining prompt...")
             processed = refine_prompt(text, config)
         elif recording_mode == "command":
@@ -669,7 +664,8 @@ def _transcribe_and_paste():
                     "code_vocabulary": False,
                     "auto_capitalize": config.get("post_processing", {}).get("auto_capitalize", True),
                     "auto_format": config.get("post_processing", {}).get("auto_format", True),
-                }
+                },
+                "custom_vocabulary": custom_vocab,
             }
             processed = process_text(text, light_config)
 
@@ -1764,6 +1760,7 @@ def main():
     _acquire_single_instance()
 
     config = load_config()
+    config["custom_vocabulary"] = _load_custom_words()
 
     tray_icon = pystray.Icon(
         "koda",

@@ -560,4 +560,9 @@ def process_text(text, config):
     if pp.get("auto_capitalize", True):
         text = auto_capitalize(text)
 
+    # Custom vocabulary is applied last so user corrections win over everything else
+    custom_vocab = config.get("custom_vocabulary", {})
+    if custom_vocab:
+        text = apply_custom_vocabulary(text, custom_vocab)
+
     return text.strip()
