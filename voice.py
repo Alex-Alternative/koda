@@ -1032,6 +1032,8 @@ def setup_hotkeys():
 # ============================================================
 
 _watchdog_running = False
+_mic_disconnected = False  # True while mic is known-dead; prevents repeated notifications
+_input_device_count = 0   # Baseline input device count; drop = physical disconnect
 
 
 def _restart_audio_stream():
@@ -1092,6 +1094,15 @@ def _full_recovery(reason):
     logger.info("Full recovery complete (%s)", reason)
 
 
+def _count_input_devices():
+    """Return current number of audio input devices via Windows API (no PortAudio disruption)."""
+    try:
+        import ctypes
+        return ctypes.windll.winmm.waveInGetNumDevs()
+    except Exception:
+        return 0
+
+
 def _watchdog_thread():
     """Monitor Koda's health and auto-recover from failures.
 
@@ -1099,12 +1110,13 @@ def _watchdog_thread():
     Sleep/wake detection and hotkey health checked every 15 seconds.
     Heartbeat logged every 5 minutes.
     """
-    global _watchdog_running
+    global _watchdog_running, _input_device_count
     _watchdog_running = True
     check_count = 0
     last_15s_time = time.monotonic()
     last_heartbeat_time = time.monotonic()
-    logger.info("Watchdog started")
+    _input_device_count = _count_input_devices()
+    logger.info("Watchdog started (input devices: %d)", _input_device_count)
 
     while _watchdog_running:
         time.sleep(3)
@@ -1114,17 +1126,34 @@ def _watchdog_thread():
         try:
             # --- Fast path: stream health every 3s ---
             if stream and not stream.active:
+                global _mic_disconnected
                 logger.warning("Audio stream died — restarting")
-                ok = False
-                try:
-                    ok = _restart_audio_stream()
-                except Exception as e:
-                    logger.error("Failed to restart audio stream: %s", e)
-                if ok:
-                    error_notify("Microphone recovered automatically.")
+                current_count = _count_input_devices()
+                if current_count < _input_device_count:
+                    # Physical device removed — don't restart on wrong device
+                    logger.warning("Input device count dropped %d→%d — physical disconnect",
+                                   _input_device_count, current_count)
+                    if not _mic_disconnected:
+                        error_notify("Microphone disconnected. Plug it back in — Koda will recover.")
+                        update_tray("#e74c3c", "Koda: Mic error")
+                    _mic_disconnected = True
                 else:
-                    error_notify("Microphone disconnected. Check your mic and restart Koda.")
-                    update_tray("#e74c3c", "Koda: Mic error")
+                    # Device count same or higher — safe to restart
+                    ok = False
+                    try:
+                        ok = _restart_audio_stream()
+                    except Exception as e:
+                        logger.error("Failed to restart audio stream: %s", e)
+                    if ok:
+                        if _mic_disconnected:
+                            error_notify("Microphone recovered automatically.")
+                        _mic_disconnected = False
+                        update_tray("#2ecc71", "Koda: Ready")
+                    else:
+                        if not _mic_disconnected:
+                            error_notify("Microphone disconnected. Check your mic and restart Koda.")
+                            update_tray("#e74c3c", "Koda: Mic error")
+                        _mic_disconnected = True
 
             # --- Slow path: every ~15s ---
             elapsed_15 = now - last_15s_time

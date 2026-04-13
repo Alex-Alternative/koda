@@ -15,7 +15,8 @@
   "post_processing": {
     "remove_filler_words": true,
     "code_vocabulary": false,
-    "auto_capitalize": true
+    "auto_capitalize": true,
+    "auto_format": true
   },
   "vad": {
     "enabled": true,
@@ -29,5 +30,18 @@
     "enabled": false,
     "model": "phi3:mini"
   },
-  "overlay_enabled": true
+  "overlay_enabled": true,
+  "output_mode": "auto_paste",
+  "streaming": true,
+  "profiles_enabled": true,
+  "voice_commands": true,
+  "translation": {
+    "enabled": false,
+    "target_language": "English"
+  },
+  "tts": {
+    "voice": "Microsoft David Desktop - English (United States)",
+    "rate": "normal"
+  },
+  "snippets": {}
 }

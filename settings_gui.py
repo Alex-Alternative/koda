@@ -31,8 +31,7 @@ class KodaSettings(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Koda Settings")
-        self.geometry("520x1750")
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.configure(bg="#1e1e2e")
 
         self.config_data = load_config()
@@ -54,9 +53,41 @@ class KodaSettings(tk.Tk):
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        # Size window to fit screen height with some padding
+        self.update_idletasks()
+        screen_h = self.winfo_screenheight()
+        win_h = min(screen_h - 80, 900)
+        self.geometry(f"540x{win_h}")
+
     def _build_ui(self):
-        main = ttk.Frame(self, padding=20)
-        main.pack(fill="both", expand=True)
+        # Outer frame holds canvas + scrollbar
+        outer = tk.Frame(self, bg="#1e1e2e")
+        outer.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(outer, bg="#1e1e2e", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        main = ttk.Frame(canvas, padding=20)
+        canvas_window = canvas.create_window((0, 0), window=main, anchor="nw")
+
+        def _on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        main.bind("<Configure>", _on_frame_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Title
         ttk.Label(main, text="Koda Settings", style="Header.TLabel").pack(anchor="w", pady=(0, 15))
