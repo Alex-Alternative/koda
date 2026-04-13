@@ -31,12 +31,13 @@ class KodaSettings(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Koda Settings")
-        self.geometry("520x1120")
+        self.geometry("520x1300")
         self.resizable(False, False)
         self.configure(bg="#1e1e2e")
 
         self.config_data = load_config()
         self._custom_words = self._load_custom_words_data()
+        self._profiles_data = self._load_profiles_data()
 
         # Style
         style = ttk.Style()
@@ -172,9 +173,37 @@ class KodaSettings(tk.Tk):
         ttk.Button(vocab_btn_row, text="Import", command=self._import_vocab).pack(side="left", padx=(0, 4))
         ttk.Button(vocab_btn_row, text="Export", command=self._export_vocab).pack(side="left")
 
-        profiles_row = ttk.Frame(cw_frame)
-        profiles_row.pack(anchor="w", pady=(6, 0))
-        ttk.Button(profiles_row, text="Edit profiles.json", command=self._open_profiles).pack(side="left")
+        # --- Per-App Profiles ---
+        ttk.Label(main, text="PER-APP PROFILES", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
+        ttk.Label(main, text="Auto-switch settings based on the active window:").pack(anchor="w")
+
+        prof_frame = ttk.Frame(main)
+        prof_frame.pack(fill="x", pady=(5, 0))
+
+        self._profile_tree = ttk.Treeview(
+            prof_frame, columns=("name", "match", "overrides"), show="headings", height=4,
+            selectmode="browse",
+        )
+        self._profile_tree.heading("name", text="Profile")
+        self._profile_tree.heading("match", text="Matches")
+        self._profile_tree.heading("overrides", text="Overrides")
+        self._profile_tree.column("name", width=110, anchor="w")
+        self._profile_tree.column("match", width=175, anchor="w")
+        self._profile_tree.column("overrides", width=175, anchor="w")
+        self._profile_tree.pack(side="left", fill="x", expand=True)
+
+        prof_scroll = ttk.Scrollbar(prof_frame, orient="vertical", command=self._profile_tree.yview)
+        self._profile_tree.configure(yscrollcommand=prof_scroll.set)
+        prof_scroll.pack(side="left", fill="y")
+
+        self._refresh_profile_tree()
+
+        prof_btn_row = ttk.Frame(main)
+        prof_btn_row.pack(anchor="w", pady=(4, 0))
+        ttk.Button(prof_btn_row, text="Add", command=self._add_profile).pack(side="left", padx=(0, 4))
+        ttk.Button(prof_btn_row, text="Edit", command=self._edit_profile).pack(side="left", padx=(0, 4))
+        ttk.Button(prof_btn_row, text="Remove", command=self._remove_profile).pack(side="left", padx=(0, 12))
+        ttk.Button(prof_btn_row, text="Edit profiles.json", command=self._open_profiles).pack(side="left")
 
         # --- Toggles ---
         ttk.Label(main, text="FEATURES", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
@@ -336,6 +365,7 @@ class KodaSettings(tk.Tk):
 
         save_config(cfg)
         self._save_custom_words_data()
+        self._save_profiles_data()
         messagebox.showinfo("Koda", "Settings saved! Restart Koda for changes to take effect.")
 
     def save_and_restart(self):
@@ -368,6 +398,155 @@ class KodaSettings(tk.Tk):
             from profiles import load_profiles
             load_profiles()  # Creates default file
         os.startfile(profiles_path)
+
+    # --- Per-App Profile CRUD ---
+
+    def _load_profiles_data(self):
+        from profiles import load_profiles
+        return load_profiles()
+
+    def _save_profiles_data(self):
+        from profiles import save_profiles
+        save_profiles(self._profiles_data)
+
+    def _profile_summary(self, profile):
+        """Return (match_str, overrides_str) for Treeview display."""
+        match_rules = profile.get("match", {})
+        parts = []
+        if "process" in match_rules:
+            parts.append(match_rules["process"])
+        if "title" in match_rules:
+            t = match_rules["title"]
+            parts.append(f"title:{t[:18]}" if len(t) > 18 else f"title:{t}")
+        match_str = ", ".join(parts) if parts else "(none)"
+
+        pp = profile.get("settings", {}).get("post_processing", {})
+        overrides = []
+        for key, label in [("code_vocabulary", "code"), ("remove_filler_words", "filler"),
+                            ("auto_capitalize", "capitalize"), ("auto_format", "format")]:
+            if key in pp:
+                overrides.append(f"{label}={'on' if pp[key] else 'off'}")
+        override_str = ", ".join(overrides) if overrides else "inherit all"
+        return match_str, override_str
+
+    def _refresh_profile_tree(self):
+        self._profile_tree.delete(*self._profile_tree.get_children())
+        for name, profile in self._profiles_data.items():
+            if name.startswith("_") or not isinstance(profile, dict):
+                continue
+            match_str, override_str = self._profile_summary(profile)
+            self._profile_tree.insert("", "end", iid=name, values=(name, match_str, override_str))
+
+    def _profile_dialog(self, title, name="", profile=None):
+        """Add/Edit dialog. Returns (name, profile_dict) or None."""
+        if profile is None:
+            profile = {}
+        match_rules = profile.get("match", {})
+        pp_overrides = profile.get("settings", {}).get("post_processing", {})
+
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.geometry("440x300")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#1e1e2e")
+        dlg.grab_set()
+
+        result = [None]
+
+        ttk.Label(dlg, text="Profile name:").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 4))
+        name_var = tk.StringVar(value=name)
+        ttk.Entry(dlg, textvariable=name_var, width=28).grid(row=0, column=1, padx=(0, 12), pady=(14, 4))
+
+        ttk.Label(dlg, text="Match process (e.g. code.exe):").grid(row=1, column=0, sticky="w", padx=12, pady=4)
+        proc_var = tk.StringVar(value=match_rules.get("process", ""))
+        ttk.Entry(dlg, textvariable=proc_var, width=28).grid(row=1, column=1, padx=(0, 12), pady=4)
+
+        ttk.Label(dlg, text="Match title regex (optional):").grid(row=2, column=0, sticky="w", padx=12, pady=4)
+        title_var = tk.StringVar(value=match_rules.get("title", ""))
+        ttk.Entry(dlg, textvariable=title_var, width=28).grid(row=2, column=1, padx=(0, 12), pady=4)
+
+        ttk.Label(dlg, text="Overrides (inherit = base config):").grid(
+            row=3, column=0, columnspan=2, sticky="w", padx=12, pady=(10, 2))
+
+        override_vars = {}
+        override_row = 4
+        for key, label in [
+            ("code_vocabulary", "Code vocabulary"),
+            ("remove_filler_words", "Remove filler words"),
+            ("auto_capitalize", "Auto-capitalize"),
+            ("auto_format", "Auto-format"),
+        ]:
+            val = "on" if pp_overrides.get(key) is True else ("off" if pp_overrides.get(key) is False else "inherit")
+            var = tk.StringVar(value=val)
+            override_vars[key] = var
+            ttk.Label(dlg, text=f"  {label}:").grid(row=override_row, column=0, sticky="w", padx=12, pady=2)
+            ttk.Combobox(dlg, textvariable=var, values=["inherit", "on", "off"],
+                         state="readonly", width=10).grid(row=override_row, column=1, sticky="w",
+                                                          padx=(0, 12), pady=2)
+            override_row += 1
+
+        def on_ok(*_):
+            n = name_var.get().strip()
+            if not n or n.startswith("_"):
+                messagebox.showwarning("Koda", "Name required; cannot start with '_'.", parent=dlg)
+                return
+            proc = proc_var.get().strip().lower()
+            ttl = title_var.get().strip()
+            if not proc and not ttl:
+                messagebox.showwarning("Koda", "At least one match rule (process or title) is required.", parent=dlg)
+                return
+            match = {}
+            if proc:
+                match["process"] = proc
+            if ttl:
+                match["title"] = ttl
+            pp = {}
+            for key, var in override_vars.items():
+                if var.get() == "on":
+                    pp[key] = True
+                elif var.get() == "off":
+                    pp[key] = False
+            new_profile = {"match": match, "settings": {"post_processing": pp} if pp else {}}
+            result[0] = (n, new_profile)
+            dlg.destroy()
+
+        btn_row = ttk.Frame(dlg)
+        btn_row.grid(row=override_row, column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(btn_row, text="OK", command=on_ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", command=dlg.destroy).pack(side="left")
+
+        dlg.wait_window()
+        return result[0]
+
+    def _add_profile(self):
+        pair = self._profile_dialog("Add Profile")
+        if pair:
+            name, profile = pair
+            self._profiles_data[name] = profile
+            self._refresh_profile_tree()
+
+    def _edit_profile(self):
+        sel = self._profile_tree.selection()
+        if not sel:
+            messagebox.showinfo("Koda", "Select a profile to edit.", parent=self)
+            return
+        old_name = sel[0]
+        old_profile = self._profiles_data.get(old_name, {})
+        pair = self._profile_dialog("Edit Profile", old_name, old_profile)
+        if pair:
+            new_name, new_profile = pair
+            if old_name != new_name:
+                del self._profiles_data[old_name]
+            self._profiles_data[new_name] = new_profile
+            self._refresh_profile_tree()
+
+    def _remove_profile(self):
+        sel = self._profile_tree.selection()
+        if not sel:
+            messagebox.showinfo("Koda", "Select a profile to remove.", parent=self)
+            return
+        self._profiles_data.pop(sel[0], None)
+        self._refresh_profile_tree()
 
     # --- Custom Vocabulary CRUD ---
 

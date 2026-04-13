@@ -5,6 +5,7 @@ Covers: text processing (auto-formatting, emails, numbers, dates, punctuation),
 voice commands, profile matching, and usage stats.
 """
 
+import json
 import os
 import sqlite3
 import tempfile
@@ -448,6 +449,198 @@ class TestDeepMerge(unittest.TestCase):
         override = {"a": 2}
         deep_merge(base, override)
         self.assertEqual(base["a"], 1)  # Original not mutated
+
+    def test_empty_override(self):
+        base = {"a": 1, "b": 2}
+        self.assertEqual(deep_merge(base, {}), {"a": 1, "b": 2})
+
+    def test_empty_base(self):
+        self.assertEqual(deep_merge({}, {"a": 1}), {"a": 1})
+
+    def test_non_dict_override_replaces_dict(self):
+        base = {"pp": {"filler": True}}
+        override = {"pp": "disabled"}
+        result = deep_merge(base, override)
+        self.assertEqual(result["pp"], "disabled")
+
+    def test_three_levels_deep(self):
+        base = {"a": {"b": {"c": 1, "d": 2}}}
+        override = {"a": {"b": {"d": 99}}}
+        result = deep_merge(base, override)
+        self.assertEqual(result["a"]["b"]["c"], 1)
+        self.assertEqual(result["a"]["b"]["d"], 99)
+
+    def test_new_key_added(self):
+        base = {"existing": True}
+        override = {"new_key": 42}
+        result = deep_merge(base, override)
+        self.assertIn("new_key", result)
+        self.assertIn("existing", result)
+
+
+class TestProfileMatchEdgeCases(unittest.TestCase):
+
+    PROFILES = {
+        "_description": "edge case profiles",
+        "CaseTest": {
+            "match": {"process": "CHROME.EXE"},
+            "settings": {"post_processing": {"code_vocabulary": True}},
+        },
+        "TitleOnly": {
+            "match": {"title": "My App"},
+            "settings": {},
+        },
+        "ProcessAndTitle": {
+            "match": {"process": "app.exe", "title": "Dashboard"},
+            "settings": {"post_processing": {"auto_capitalize": False}},
+        },
+        "BadRegex": {
+            "match": {"title": "[invalid(regex"},
+            "settings": {},
+        },
+        "First": {
+            "match": {"process": "shared.exe"},
+            "settings": {"post_processing": {"code_vocabulary": True}},
+        },
+        "Second": {
+            "match": {"process": "shared.exe"},
+            "settings": {"post_processing": {"code_vocabulary": False}},
+        },
+    }
+
+    def test_process_match_case_insensitive(self):
+        """Profile stores 'CHROME.EXE' but match_profile lowercases the stored value."""
+        # match_profile compares process_name == match_rules["process"].lower()
+        name, _ = match_profile(self.PROFILES, "chrome.exe", "")
+        self.assertEqual(name, "CaseTest")
+
+    def test_title_only_match(self):
+        name, _ = match_profile(self.PROFILES, "unknown.exe", "My App Window")
+        self.assertEqual(name, "TitleOnly")
+
+    def test_process_takes_priority_over_title(self):
+        """When process matches, we don't need title to match too."""
+        name, settings = match_profile(self.PROFILES, "app.exe", "Something Else")
+        self.assertEqual(name, "ProcessAndTitle")
+        self.assertFalse(settings["post_processing"]["auto_capitalize"])
+
+    def test_title_match_with_process_rule_present(self):
+        """Title regex matches even when profile also has a process rule."""
+        name, _ = match_profile(self.PROFILES, "other.exe", "Dashboard")
+        self.assertEqual(name, "ProcessAndTitle")
+
+    def test_invalid_regex_does_not_crash(self):
+        """Bad regex in title rule is caught; match returns None."""
+        name, settings = match_profile(self.PROFILES, "notepad.exe", "anything")
+        # BadRegex profile won't match, but should not raise
+        self.assertIsNone(name)
+        self.assertEqual(settings, {})
+
+    def test_first_match_wins(self):
+        """When two profiles match the same process, the first one listed wins."""
+        name, settings = match_profile(self.PROFILES, "shared.exe", "")
+        self.assertEqual(name, "First")
+        self.assertTrue(settings["post_processing"]["code_vocabulary"])
+
+    def test_empty_profiles_dict(self):
+        name, settings = match_profile({}, "code.exe", "")
+        self.assertIsNone(name)
+        self.assertEqual(settings, {})
+
+    def test_profile_missing_match_key_skipped(self):
+        profiles = {"NoMatch": {"settings": {}}}
+        name, settings = match_profile(profiles, "code.exe", "anything")
+        self.assertIsNone(name)
+
+    def test_match_returns_empty_settings_when_no_settings_key(self):
+        profiles = {"NoSettings": {"match": {"process": "foo.exe"}}}
+        name, settings = match_profile(profiles, "foo.exe", "")
+        self.assertEqual(name, "NoSettings")
+        self.assertEqual(settings, {})
+
+
+class TestProfileLoadSave(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.profiles_path = os.path.join(self.tmp_dir, "profiles.json")
+
+    def _write_profiles(self, data):
+        with open(self.profiles_path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    def test_save_writes_valid_json(self):
+        from profiles import save_profiles, PROFILES_PATH
+        import profiles
+        orig = profiles.PROFILES_PATH
+        profiles.PROFILES_PATH = self.profiles_path
+        try:
+            data = {"MyApp": {"match": {"process": "app.exe"}, "settings": {}}}
+            save_profiles(data)
+            with open(self.profiles_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            self.assertEqual(loaded["MyApp"]["match"]["process"], "app.exe")
+        finally:
+            profiles.PROFILES_PATH = orig
+
+    def test_load_reads_existing_file(self):
+        from profiles import load_profiles, PROFILES_PATH
+        import profiles
+        orig = profiles.PROFILES_PATH
+        profiles.PROFILES_PATH = self.profiles_path
+        try:
+            data = {"TestProfile": {"match": {"process": "test.exe"}, "settings": {}}}
+            self._write_profiles(data)
+            result = load_profiles()
+            self.assertIn("TestProfile", result)
+        finally:
+            profiles.PROFILES_PATH = orig
+
+    def test_load_creates_default_when_missing(self):
+        from profiles import load_profiles, DEFAULT_PROFILES
+        import profiles
+        orig = profiles.PROFILES_PATH
+        profiles.PROFILES_PATH = self.profiles_path
+        try:
+            self.assertFalse(os.path.exists(self.profiles_path))
+            result = load_profiles()
+            self.assertTrue(os.path.exists(self.profiles_path))
+            self.assertIn("VS Code", result)
+        finally:
+            profiles.PROFILES_PATH = orig
+
+    def test_round_trip(self):
+        from profiles import save_profiles, load_profiles
+        import profiles
+        orig = profiles.PROFILES_PATH
+        profiles.PROFILES_PATH = self.profiles_path
+        try:
+            data = {"Zoom": {"match": {"process": "zoom.exe"}, "settings": {}}}
+            save_profiles(data)
+            result = load_profiles()
+            self.assertEqual(result["Zoom"]["match"]["process"], "zoom.exe")
+        finally:
+            profiles.PROFILES_PATH = orig
+
+    def test_load_corrupt_json_falls_back_to_defaults(self):
+        from profiles import load_profiles, DEFAULT_PROFILES
+        import profiles
+        orig = profiles.PROFILES_PATH
+        profiles.PROFILES_PATH = self.profiles_path
+        try:
+            with open(self.profiles_path, "w", encoding="utf-8") as f:
+                f.write("NOT_JSON{{{")
+            result = load_profiles()
+            # Falls back to defaults when file is corrupt
+            self.assertIn("VS Code", result)
+        finally:
+            profiles.PROFILES_PATH = orig
+
+    def test_default_profiles_has_expected_apps(self):
+        from profiles import DEFAULT_PROFILES
+        self.assertIn("VS Code", DEFAULT_PROFILES)
+        self.assertIn("Slack", DEFAULT_PROFILES)
+        self.assertIn("Outlook", DEFAULT_PROFILES)
 
 
 # ============================================================
