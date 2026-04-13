@@ -32,7 +32,10 @@ class KodaSettings(tk.Tk):
         super().__init__()
         self.title("Koda Settings")
         self.resizable(True, True)
-        self.configure(bg="#1e1e2e")
+        BG = "#f4f4f4"
+        FG = "#1a1a1a"
+        ACCENT = "#1a56db"
+        self.configure(bg=BG)
 
         self.config_data = load_config()
         self._custom_words = self._load_custom_words_data()
@@ -40,376 +43,264 @@ class KodaSettings(tk.Tk):
         self._filler_words = self._load_filler_words_data()
         self._snippets = dict(self.config_data.get("snippets", {}))
 
-        # Style
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("TLabel", background="#1e1e2e", foreground="#cdd6f4", font=("Segoe UI", 10))
-        style.configure("Header.TLabel", background="#1e1e2e", foreground="#89b4fa", font=("Segoe UI", 12, "bold"))
-        style.configure("TCheckbutton", background="#1e1e2e", foreground="#cdd6f4", font=("Segoe UI", 10))
-        style.configure("TButton", font=("Segoe UI", 10))
-        style.configure("TCombobox", font=("Segoe UI", 10))
-        style.configure("TEntry", font=("Segoe UI", 10))
+        style.configure(".",            background=BG,  foreground=FG,     font=("Segoe UI", 10))
+        style.configure("TFrame",       background=BG)
+        style.configure("TLabel",       background=BG,  foreground=FG,     font=("Segoe UI", 10))
+        style.configure("Header.TLabel",background=BG,  foreground=ACCENT, font=("Segoe UI", 10, "bold"))
+        style.configure("TCheckbutton", background=BG,  foreground=FG,     font=("Segoe UI", 10))
+        style.configure("TRadiobutton", background=BG,  foreground=FG,     font=("Segoe UI", 10))
+        style.configure("TButton",      font=("Segoe UI", 10))
+        style.configure("TCombobox",    font=("Segoe UI", 10))
+        style.configure("TEntry",       font=("Segoe UI", 10))
+        style.configure("TSeparator",   background="#d0d0d0")
+        style.configure("TNotebook",    background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab",font=("Segoe UI", 10), padding=(12, 5))
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-
-        # Size window to fit screen height with some padding
         self.update_idletasks()
-        screen_h = self.winfo_screenheight()
-        win_h = min(screen_h - 80, 900)
-        self.geometry(f"540x{win_h}")
+        self.geometry("620x540")
 
     def _build_ui(self):
-        # Outer frame holds canvas + scrollbar
-        outer = tk.Frame(self, bg="#1e1e2e")
-        outer.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill="both", expand=True, padx=10, pady=(10, 0))
 
-        canvas = tk.Canvas(outer, bg="#1e1e2e", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=scrollbar.set)
+        gen_tab  = ttk.Frame(notebook, padding=15)
+        hk_tab   = ttk.Frame(notebook, padding=15)
+        sp_tab   = ttk.Frame(notebook, padding=15)
+        wd_tab   = ttk.Frame(notebook, padding=15)
+        adv_tab  = ttk.Frame(notebook, padding=15)
 
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        notebook.add(gen_tab,  text="  General  ")
+        notebook.add(hk_tab,   text="  Hotkeys  ")
+        notebook.add(sp_tab,   text="  Speech  ")
+        notebook.add(wd_tab,   text="  Words  ")
+        notebook.add(adv_tab,  text="  Advanced  ")
 
-        main = ttk.Frame(canvas, padding=20)
-        canvas_window = canvas.create_window((0, 0), window=main, anchor="nw")
+        self._build_general_tab(gen_tab)
+        self._build_hotkeys_tab(hk_tab)
+        self._build_speech_tab(sp_tab)
+        self._build_words_tab(wd_tab)
+        self._build_advanced_tab(adv_tab)
 
-        def _on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
+        sep = ttk.Separator(self, orient="horizontal")
+        sep.pack(fill="x", padx=10, pady=(8, 0))
 
-        def _on_canvas_configure(event):
-            canvas.itemconfig(canvas_window, width=event.width)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(btn_frame, text="Save & Restart Koda", command=self.save_and_restart).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_frame, text="Save", command=self.save).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_frame, text="Cancel", command=self.on_close).pack(side="left")
 
-        main.bind("<Configure>", _on_frame_configure)
-        canvas.bind("<Configure>", _on_canvas_configure)
-
-        # Mouse wheel scrolling
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
-        # Title
-        ttk.Label(main, text="Koda Settings", style="Header.TLabel").pack(anchor="w", pady=(0, 15))
-
-        # --- Hotkeys ---
-        ttk.Label(main, text="HOTKEYS", style="Header.TLabel").pack(anchor="w", pady=(10, 5))
-
-        hk_frame = ttk.Frame(main)
-        hk_frame.pack(fill="x", pady=2)
-
-        # Safe hotkey options: F-keys and ctrl+space (proven to work without conflicts)
-        FKEY_OPTIONS = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"]
-        DICTATION_OPTIONS = ["ctrl+space", "ctrl+alt+d"] + FKEY_OPTIONS
-
-        ttk.Label(hk_frame, text="Dictation:").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self.hk_dict_var = tk.StringVar(value=self.config_data.get("hotkey_dictation", "ctrl+space"))
-        ttk.Combobox(hk_frame, textvariable=self.hk_dict_var, width=22,
-                     values=DICTATION_OPTIONS, state="readonly").grid(row=0, column=1, sticky="w")
-
-        ttk.Label(hk_frame, text="Command:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_cmd_var = tk.StringVar(value=self.config_data.get("hotkey_command", "f8"))
-        ttk.Combobox(hk_frame, textvariable=self.hk_cmd_var, width=22,
-                     values=FKEY_OPTIONS, state="readonly").grid(row=1, column=1, sticky="w")
-
-        ttk.Label(hk_frame, text="Prompt Assist:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_prompt_var = tk.StringVar(value=self.config_data.get("hotkey_prompt", "f9"))
-        ttk.Combobox(hk_frame, textvariable=self.hk_prompt_var, width=22,
-                     values=FKEY_OPTIONS, state="readonly").grid(row=2, column=1, sticky="w")
-
-        ttk.Label(hk_frame, text="Correction:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_corr_var = tk.StringVar(value=self.config_data.get("hotkey_correction", "f7"))
-        ttk.Combobox(hk_frame, textvariable=self.hk_corr_var, width=22,
-                     values=FKEY_OPTIONS, state="readonly").grid(row=3, column=1, sticky="w")
-
-        ttk.Label(hk_frame, text="Read back:").grid(row=4, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_read_var = tk.StringVar(value=self.config_data.get("hotkey_readback", "f6"))
-        ttk.Combobox(hk_frame, textvariable=self.hk_read_var, width=22,
-                     values=FKEY_OPTIONS, state="readonly").grid(row=4, column=1, sticky="w")
-
-        ttk.Label(hk_frame, text="Read selected:").grid(row=5, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.hk_readsel_var = tk.StringVar(value=self.config_data.get("hotkey_readback_selected", "f5"))
-        ttk.Combobox(hk_frame, textvariable=self.hk_readsel_var, width=22,
-                     values=FKEY_OPTIONS, state="readonly").grid(row=5, column=1, sticky="w")
-
-        # --- Model ---
-        ttk.Label(main, text="SPEECH MODEL", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-
-        model_frame = ttk.Frame(main)
-        model_frame.pack(fill="x", pady=2)
-
-        ttk.Label(model_frame, text="Model size:").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self.model_var = tk.StringVar(value=self.config_data.get("model_size", "base"))
-        model_combo = ttk.Combobox(model_frame, textvariable=self.model_var, width=22,
-                                   values=["tiny", "base", "small", "medium", "large-v2", "large-v3",
-                                           "large-v3-turbo", "distil-large-v3", "distil-medium.en"],
-                                   state="readonly")
-        model_combo.grid(row=0, column=1, sticky="w")
-
-        ttk.Label(model_frame, text="Language:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=3)
-        self.lang_var = tk.StringVar(value=self.config_data.get("language", "en"))
-        lang_combo = ttk.Combobox(model_frame, textvariable=self.lang_var, width=22,
-                                  values=["en", "es", "fr", "de", "pt", "zh", "ja", "ko",
-                                          "ar", "hi", "ru", "it", "nl", "pl", "tr", "auto"],
-                                  state="readonly")
-        lang_combo.grid(row=1, column=1, sticky="w")
-
-        # --- Mode ---
-        ttk.Label(main, text="RECORDING MODE", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-
+    def _build_general_tab(self, parent):
+        ttk.Label(parent, text="Recording Mode", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
         self.mode_var = tk.StringVar(value=self.config_data.get("hotkey_mode", "hold"))
-        mode_frame = ttk.Frame(main)
-        mode_frame.pack(fill="x", pady=2)
-        ttk.Radiobutton(mode_frame, text="Hold-to-talk (hold key while speaking)", variable=self.mode_var, value="hold").pack(anchor="w")
-        ttk.Radiobutton(mode_frame, text="Toggle (press once, auto-stops on silence)", variable=self.mode_var, value="toggle").pack(anchor="w")
+        ttk.Radiobutton(parent, text="Hold-to-talk  (hold key while speaking)", variable=self.mode_var, value="hold").pack(anchor="w")
+        ttk.Radiobutton(parent, text="Toggle  (press once, auto-stops on silence)", variable=self.mode_var, value="toggle").pack(anchor="w")
 
-        # --- Output Mode ---
-        ttk.Label(main, text="OUTPUT MODE", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
+        ttk.Label(parent, text="Output", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
         self.output_var = tk.StringVar(value=self.config_data.get("output_mode", "auto_paste"))
-        output_frame = ttk.Frame(main)
-        output_frame.pack(fill="x", pady=2)
-        ttk.Radiobutton(output_frame, text="Auto-paste (copy + Ctrl+V into active window)", variable=self.output_var, value="auto_paste").pack(anchor="w")
-        ttk.Radiobutton(output_frame, text="Clipboard only (copy to clipboard, no paste)", variable=self.output_var, value="clipboard").pack(anchor="w")
+        ttk.Radiobutton(parent, text="Auto-paste  (types into the active window)", variable=self.output_var, value="auto_paste").pack(anchor="w")
+        ttk.Radiobutton(parent, text="Clipboard only  (no paste)", variable=self.output_var, value="clipboard").pack(anchor="w")
 
-        # --- Custom Words ---
-        ttk.Label(main, text="CUSTOM WORDS", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
-        cw_frame = ttk.Frame(main)
-        cw_frame.pack(fill="x", pady=2)
-        ttk.Label(cw_frame, text="Replace misheard words with correct versions:").pack(anchor="w")
+        ttk.Label(parent, text="Features", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
 
-        tree_frame = ttk.Frame(cw_frame)
-        tree_frame.pack(fill="x", pady=(5, 0))
+        checks = [
+            ("sound_effects",                   "sound_var",       "Sound effects",                        True,  None),
+            ("post_processing.remove_filler_words", "filler_var",  "Remove filler words  (um, uh, you know)", True, "post_processing"),
+            ("noise_reduction",                 "noise_var",       "Noise reduction  (for noisy environments)", False, None),
+            ("streaming",                       "stream_var",      "Streaming transcription  (live preview)",  True,  None),
+            ("post_processing.auto_format",     "autoformat_var",  "Auto-format  (numbers, dates, punctuation)", True, "post_processing"),
+            ("overlay_enabled",                 "overlay_var",     "Floating status overlay",              True,  None),
+            ("voice_commands",                  "voicecmds_var",   "Voice commands  (select all, undo, new line)", True, None),
+            ("profiles_enabled",                "profiles_var",    "Per-app profiles  (auto-switch by window)", True, None),
+            ("post_processing.code_vocabulary", "code_var",        "Code vocabulary  (command mode symbols)", False, "post_processing"),
+        ]
+        for cfg_key, attr, label, default, section in checks:
+            if section:
+                sub_key = cfg_key.split(".")[1]
+                val = self.config_data.get(section, {}).get(sub_key, default)
+            else:
+                val = self.config_data.get(cfg_key, default)
+            var = tk.BooleanVar(value=val)
+            setattr(self, attr, var)
+            ttk.Checkbutton(parent, text=label, variable=var).pack(anchor="w", pady=1)
 
-        self._vocab_tree = ttk.Treeview(
-            tree_frame, columns=("misheard", "correct"), show="headings", height=5,
-            selectmode="browse",
-        )
-        self._vocab_tree.heading("misheard", text="Misheard")
-        self._vocab_tree.heading("correct", text="Correct")
-        self._vocab_tree.column("misheard", width=230, anchor="w")
-        self._vocab_tree.column("correct", width=230, anchor="w")
-        self._vocab_tree.pack(side="left", fill="x", expand=True)
+    def _build_hotkeys_tab(self, parent):
+        FKEY_OPTIONS = ["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12"]
+        DICT_OPTIONS = ["ctrl+space", "ctrl+alt+d"] + FKEY_OPTIONS
 
-        vocab_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self._vocab_tree.yview)
-        self._vocab_tree.configure(yscrollcommand=vocab_scroll.set)
-        vocab_scroll.pack(side="left", fill="y")
+        ttk.Label(parent, text="Hotkey Assignments", style="Header.TLabel").pack(anchor="w", pady=(0, 10))
 
+        self.hk_dict_var    = tk.StringVar(value=self.config_data.get("hotkey_dictation",          "ctrl+space"))
+        self.hk_cmd_var     = tk.StringVar(value=self.config_data.get("hotkey_command",             "f8"))
+        self.hk_prompt_var  = tk.StringVar(value=self.config_data.get("hotkey_prompt",              "f9"))
+        self.hk_corr_var    = tk.StringVar(value=self.config_data.get("hotkey_correction",          "f7"))
+        self.hk_read_var    = tk.StringVar(value=self.config_data.get("hotkey_readback",            "f6"))
+        self.hk_readsel_var = tk.StringVar(value=self.config_data.get("hotkey_readback_selected",   "f5"))
+
+        rows = [
+            ("Dictation:",     self.hk_dict_var,    DICT_OPTIONS),
+            ("Command:",       self.hk_cmd_var,      FKEY_OPTIONS),
+            ("Prompt Assist:", self.hk_prompt_var,   FKEY_OPTIONS),
+            ("Correction:",    self.hk_corr_var,     FKEY_OPTIONS),
+            ("Read back:",     self.hk_read_var,     FKEY_OPTIONS),
+            ("Read selected:", self.hk_readsel_var,  FKEY_OPTIONS),
+        ]
+        f = ttk.Frame(parent)
+        f.pack(fill="x")
+        for i, (label, var, opts) in enumerate(rows):
+            ttk.Label(f, text=label).grid(row=i, column=0, sticky="w", padx=(0, 14), pady=4)
+            ttk.Combobox(f, textvariable=var, values=opts, width=18, state="readonly").grid(row=i, column=1, sticky="w")
+
+    def _build_speech_tab(self, parent):
+        ttk.Label(parent, text="Whisper Model", style="Header.TLabel").pack(anchor="w", pady=(0, 8))
+
+        f = ttk.Frame(parent)
+        f.pack(fill="x")
+
+        ttk.Label(f, text="Model size:").grid(row=0, column=0, sticky="w", padx=(0, 14), pady=4)
+        self.model_var = tk.StringVar(value=self.config_data.get("model_size", "base"))
+        ttk.Combobox(f, textvariable=self.model_var, width=24,
+                     values=["tiny", "base", "small", "medium", "large-v2", "large-v3",
+                             "large-v3-turbo", "distil-large-v3", "distil-medium.en"],
+                     state="readonly").grid(row=0, column=1, sticky="w")
+
+        ttk.Label(f, text="Language:").grid(row=1, column=0, sticky="w", padx=(0, 14), pady=4)
+        self.lang_var = tk.StringVar(value=self.config_data.get("language", "en"))
+        ttk.Combobox(f, textvariable=self.lang_var, width=24,
+                     values=["en","es","fr","de","pt","zh","ja","ko","ar","hi","ru","it","nl","pl","tr","auto"],
+                     state="readonly").grid(row=1, column=1, sticky="w")
+
+        ttk.Label(parent, text="\nLarger models are more accurate but slower to load.\n"
+                               "tiny/base = fastest  |  small = best balance  |  large = highest accuracy",
+                  foreground="#888888").pack(anchor="w")
+
+    def _build_words_tab(self, parent):
+        sub = ttk.Notebook(parent)
+        sub.pack(fill="both", expand=True)
+
+        cw_tab = ttk.Frame(sub, padding=10)
+        fw_tab = ttk.Frame(sub, padding=10)
+        sn_tab = ttk.Frame(sub, padding=10)
+        pr_tab = ttk.Frame(sub, padding=10)
+
+        sub.add(cw_tab, text="  Custom Words  ")
+        sub.add(fw_tab, text="  Filler Words  ")
+        sub.add(sn_tab, text="  Snippets  ")
+        sub.add(pr_tab, text="  App Profiles  ")
+
+        # Custom Words
+        ttk.Label(cw_tab, text="Replace misheard words with the correct version:").pack(anchor="w", pady=(0, 5))
+        tf = ttk.Frame(cw_tab); tf.pack(fill="both", expand=True)
+        self._vocab_tree = ttk.Treeview(tf, columns=("misheard","correct"), show="headings", height=8, selectmode="browse")
+        self._vocab_tree.heading("misheard", text="Misheard"); self._vocab_tree.heading("correct", text="Replace with")
+        self._vocab_tree.column("misheard", width=200, anchor="w"); self._vocab_tree.column("correct", width=200, anchor="w")
+        self._vocab_tree.pack(side="left", fill="both", expand=True)
+        s = ttk.Scrollbar(tf, orient="vertical", command=self._vocab_tree.yview)
+        self._vocab_tree.configure(yscrollcommand=s.set); s.pack(side="left", fill="y")
         self._refresh_vocab_tree()
+        br = ttk.Frame(cw_tab); br.pack(anchor="w", pady=(6,0))
+        for lbl, cmd in [("Add", self._add_vocab_entry), ("Edit", self._edit_vocab_entry),
+                         ("Remove", self._remove_vocab_entry), ("Import", self._import_vocab), ("Export", self._export_vocab)]:
+            ttk.Button(br, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
 
-        vocab_btn_row = ttk.Frame(cw_frame)
-        vocab_btn_row.pack(anchor="w", pady=(4, 0))
-        ttk.Button(vocab_btn_row, text="Add", command=self._add_vocab_entry).pack(side="left", padx=(0, 4))
-        ttk.Button(vocab_btn_row, text="Edit", command=self._edit_vocab_entry).pack(side="left", padx=(0, 4))
-        ttk.Button(vocab_btn_row, text="Remove", command=self._remove_vocab_entry).pack(side="left", padx=(0, 12))
-        ttk.Button(vocab_btn_row, text="Import", command=self._import_vocab).pack(side="left", padx=(0, 4))
-        ttk.Button(vocab_btn_row, text="Export", command=self._export_vocab).pack(side="left")
-
-        # --- Per-App Profiles ---
-        ttk.Label(main, text="PER-APP PROFILES", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-        ttk.Label(main, text="Auto-switch settings based on the active window:").pack(anchor="w")
-
-        prof_frame = ttk.Frame(main)
-        prof_frame.pack(fill="x", pady=(5, 0))
-
-        self._profile_tree = ttk.Treeview(
-            prof_frame, columns=("name", "match", "overrides"), show="headings", height=4,
-            selectmode="browse",
-        )
-        self._profile_tree.heading("name", text="Profile")
-        self._profile_tree.heading("match", text="Matches")
-        self._profile_tree.heading("overrides", text="Overrides")
-        self._profile_tree.column("name", width=110, anchor="w")
-        self._profile_tree.column("match", width=175, anchor="w")
-        self._profile_tree.column("overrides", width=175, anchor="w")
-        self._profile_tree.pack(side="left", fill="x", expand=True)
-
-        prof_scroll = ttk.Scrollbar(prof_frame, orient="vertical", command=self._profile_tree.yview)
-        self._profile_tree.configure(yscrollcommand=prof_scroll.set)
-        prof_scroll.pack(side="left", fill="y")
-
-        self._refresh_profile_tree()
-
-        prof_btn_row = ttk.Frame(main)
-        prof_btn_row.pack(anchor="w", pady=(4, 0))
-        ttk.Button(prof_btn_row, text="Add", command=self._add_profile).pack(side="left", padx=(0, 4))
-        ttk.Button(prof_btn_row, text="Edit", command=self._edit_profile).pack(side="left", padx=(0, 4))
-        ttk.Button(prof_btn_row, text="Remove", command=self._remove_profile).pack(side="left", padx=(0, 12))
-        ttk.Button(prof_btn_row, text="Edit profiles.json", command=self._open_profiles).pack(side="left")
-
-        # --- Filler Words ---
-        ttk.Label(main, text="FILLER WORDS", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-        ttk.Label(main, text="Words and phrases removed from speech (when filler removal is on):").pack(anchor="w")
-
-        fw_frame = ttk.Frame(main)
-        fw_frame.pack(fill="x", pady=(5, 0))
-
-        self._filler_tree = ttk.Treeview(
-            fw_frame, columns=("word",), show="headings", height=5,
-            selectmode="browse",
-        )
-        self._filler_tree.heading("word", text="Word / Phrase")
-        self._filler_tree.column("word", width=450, anchor="w")
-        self._filler_tree.pack(side="left", fill="x", expand=True)
-
-        fw_scroll = ttk.Scrollbar(fw_frame, orient="vertical", command=self._filler_tree.yview)
-        self._filler_tree.configure(yscrollcommand=fw_scroll.set)
-        fw_scroll.pack(side="left", fill="y")
-
+        # Filler Words
+        ttk.Label(fw_tab, text="Removed from speech when filler removal is enabled:").pack(anchor="w", pady=(0, 5))
+        ff = ttk.Frame(fw_tab); ff.pack(fill="both", expand=True)
+        self._filler_tree = ttk.Treeview(ff, columns=("word",), show="headings", height=8, selectmode="browse")
+        self._filler_tree.heading("word", text="Word / Phrase"); self._filler_tree.column("word", width=440, anchor="w")
+        self._filler_tree.pack(side="left", fill="both", expand=True)
+        fs = ttk.Scrollbar(ff, orient="vertical", command=self._filler_tree.yview)
+        self._filler_tree.configure(yscrollcommand=fs.set); fs.pack(side="left", fill="y")
         self._refresh_filler_tree()
+        fbr = ttk.Frame(fw_tab); fbr.pack(anchor="w", pady=(6,0))
+        for lbl, cmd in [("Add", self._add_filler_word), ("Remove", self._remove_filler_word), ("Restore defaults", self._restore_filler_defaults)]:
+            ttk.Button(fbr, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
 
-        fw_btn_row = ttk.Frame(main)
-        fw_btn_row.pack(anchor="w", pady=(4, 0))
-        ttk.Button(fw_btn_row, text="Add", command=self._add_filler_word).pack(side="left", padx=(0, 4))
-        ttk.Button(fw_btn_row, text="Remove", command=self._remove_filler_word).pack(side="left", padx=(0, 12))
-        ttk.Button(fw_btn_row, text="Restore defaults", command=self._restore_filler_defaults).pack(side="left")
-
-        # --- Snippets ---
-        ttk.Label(main, text="SNIPPETS", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-        ttk.Label(main, text="Speak the trigger alone to paste the expansion:").pack(anchor="w")
-
-        sn_frame = ttk.Frame(main)
-        sn_frame.pack(fill="x", pady=(5, 0))
-
-        self._snippets_tree = ttk.Treeview(
-            sn_frame, columns=("trigger", "expansion"), show="headings", height=4,
-            selectmode="browse",
-        )
-        self._snippets_tree.heading("trigger", text="Trigger")
-        self._snippets_tree.heading("expansion", text="Expansion")
-        self._snippets_tree.column("trigger", width=150, anchor="w")
-        self._snippets_tree.column("expansion", width=300, anchor="w")
-        self._snippets_tree.pack(side="left", fill="x", expand=True)
-
-        sn_scroll = ttk.Scrollbar(sn_frame, orient="vertical", command=self._snippets_tree.yview)
-        self._snippets_tree.configure(yscrollcommand=sn_scroll.set)
-        sn_scroll.pack(side="left", fill="y")
-
+        # Snippets
+        ttk.Label(sn_tab, text="Say the trigger word alone to paste the full expansion:").pack(anchor="w", pady=(0, 5))
+        sf = ttk.Frame(sn_tab); sf.pack(fill="both", expand=True)
+        self._snippets_tree = ttk.Treeview(sf, columns=("trigger","expansion"), show="headings", height=8, selectmode="browse")
+        self._snippets_tree.heading("trigger", text="Trigger"); self._snippets_tree.heading("expansion", text="Expansion")
+        self._snippets_tree.column("trigger", width=140, anchor="w"); self._snippets_tree.column("expansion", width=300, anchor="w")
+        self._snippets_tree.pack(side="left", fill="both", expand=True)
+        ss = ttk.Scrollbar(sf, orient="vertical", command=self._snippets_tree.yview)
+        self._snippets_tree.configure(yscrollcommand=ss.set); ss.pack(side="left", fill="y")
         self._refresh_snippets_tree()
+        sbr = ttk.Frame(sn_tab); sbr.pack(anchor="w", pady=(6,0))
+        for lbl, cmd in [("Add", self._add_snippet), ("Edit", self._edit_snippet), ("Remove", self._remove_snippet)]:
+            ttk.Button(sbr, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
 
-        sn_btn_row = ttk.Frame(main)
-        sn_btn_row.pack(anchor="w", pady=(4, 0))
-        ttk.Button(sn_btn_row, text="Add", command=self._add_snippet).pack(side="left", padx=(0, 4))
-        ttk.Button(sn_btn_row, text="Edit", command=self._edit_snippet).pack(side="left", padx=(0, 4))
-        ttk.Button(sn_btn_row, text="Remove", command=self._remove_snippet).pack(side="left")
+        # App Profiles
+        ttk.Label(pr_tab, text="Auto-switch settings based on the active window:").pack(anchor="w", pady=(0, 5))
+        pf = ttk.Frame(pr_tab); pf.pack(fill="both", expand=True)
+        self._profile_tree = ttk.Treeview(pf, columns=("name","match","overrides"), show="headings", height=8, selectmode="browse")
+        self._profile_tree.heading("name", text="Profile"); self._profile_tree.heading("match", text="Matches"); self._profile_tree.heading("overrides", text="Overrides")
+        self._profile_tree.column("name", width=110, anchor="w"); self._profile_tree.column("match", width=170, anchor="w"); self._profile_tree.column("overrides", width=160, anchor="w")
+        self._profile_tree.pack(side="left", fill="both", expand=True)
+        ps = ttk.Scrollbar(pf, orient="vertical", command=self._profile_tree.yview)
+        self._profile_tree.configure(yscrollcommand=ps.set); ps.pack(side="left", fill="y")
+        self._refresh_profile_tree()
+        pbr = ttk.Frame(pr_tab); pbr.pack(anchor="w", pady=(6,0))
+        for lbl, cmd in [("Add", self._add_profile), ("Edit", self._edit_profile), ("Remove", self._remove_profile), ("Edit JSON", self._open_profiles)]:
+            ttk.Button(pbr, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
 
-        # --- Toggles ---
-        ttk.Label(main, text="FEATURES", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-
-        self.sound_var = tk.BooleanVar(value=self.config_data.get("sound_effects", True))
-        ttk.Checkbutton(main, text="Sound effects", variable=self.sound_var).pack(anchor="w")
-
-        self.filler_var = tk.BooleanVar(value=self.config_data.get("post_processing", {}).get("remove_filler_words", True))
-        ttk.Checkbutton(main, text="Remove filler words (um, uh, you know)", variable=self.filler_var).pack(anchor="w")
-
-        self.noise_var = tk.BooleanVar(value=self.config_data.get("noise_reduction", False))
-        ttk.Checkbutton(main, text="Noise reduction (slower, for noisy environments)", variable=self.noise_var).pack(anchor="w")
-
-        self.stream_var = tk.BooleanVar(value=self.config_data.get("streaming", True))
-        ttk.Checkbutton(main, text="Streaming transcription (live preview while speaking)", variable=self.stream_var).pack(anchor="w")
-
-        self.code_var = tk.BooleanVar(value=self.config_data.get("post_processing", {}).get("code_vocabulary", False))
-        ttk.Checkbutton(main, text="Code vocabulary (open paren → ( in command mode)", variable=self.code_var).pack(anchor="w")
-
-        self.autoformat_var = tk.BooleanVar(value=self.config_data.get("post_processing", {}).get("auto_format", True))
-        ttk.Checkbutton(main, text="Auto-format (numbers, dates, smart punctuation)", variable=self.autoformat_var).pack(anchor="w")
-
-        self.overlay_var = tk.BooleanVar(value=self.config_data.get("overlay_enabled", True))
-        ttk.Checkbutton(main, text="Floating status overlay (live recording preview)", variable=self.overlay_var).pack(anchor="w")
-
-        self.voicecmds_var = tk.BooleanVar(value=self.config_data.get("voice_commands", True))
-        ttk.Checkbutton(main, text="Voice commands (say 'select all', 'undo', 'new line')", variable=self.voicecmds_var).pack(anchor="w")
-
-        self.profiles_var = tk.BooleanVar(value=self.config_data.get("profiles_enabled", True))
-        ttk.Checkbutton(main, text="Per-app profiles (auto-switch settings by active window)", variable=self.profiles_var).pack(anchor="w")
-
-        # --- Translation ---
-        ttk.Label(main, text="TRANSLATION", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-
-        trans_frame = ttk.Frame(main)
-        trans_frame.pack(fill="x", pady=2)
-
+    def _build_advanced_tab(self, parent):
+        ttk.Label(parent, text="Translation", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
         self.trans_var = tk.BooleanVar(value=self.config_data.get("translation", {}).get("enabled", False))
-        ttk.Checkbutton(trans_frame, text="Enable translation (speak one language, type another)",
-                         variable=self.trans_var).pack(anchor="w")
-
-        target_frame = ttk.Frame(main)
-        target_frame.pack(fill="x", pady=2)
-        ttk.Label(target_frame, text="Target language:").pack(side="left", padx=(0, 10))
+        ttk.Checkbutton(parent, text="Enable translation  (speak one language, output another)", variable=self.trans_var).pack(anchor="w")
+        lf = ttk.Frame(parent); lf.pack(fill="x", pady=(4, 0))
+        ttk.Label(lf, text="Target language:").pack(side="left", padx=(0, 10))
         self.trans_lang_var = tk.StringVar(value=self.config_data.get("translation", {}).get("target_language", "English"))
-        trans_combo = ttk.Combobox(target_frame, textvariable=self.trans_lang_var, width=22,
-                                   values=["English", "Spanish", "French", "German", "Portuguese",
-                                           "Japanese", "Korean", "Chinese", "Italian", "Russian"],
-                                   state="readonly")
-        trans_combo.pack(side="left")
-        ttk.Label(target_frame, text="(English uses Whisper; others need Ollama)").pack(side="left", padx=(10, 0))
+        ttk.Combobox(lf, textvariable=self.trans_lang_var, width=18,
+                     values=["English","Spanish","French","German","Portuguese","Japanese","Korean","Chinese","Italian","Russian"],
+                     state="readonly").pack(side="left")
+        ttk.Label(lf, text="  English = Whisper  |  Others = Ollama", foreground="#888888").pack(side="left", padx=(10, 0))
 
-        # --- Read-back voice ---
-        ttk.Label(main, text="READ-BACK", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
-        voice_frame = ttk.Frame(main)
-        voice_frame.pack(fill="x", pady=2)
-
+        ttk.Label(parent, text="Read-back Voice", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
         self.voices = self._get_voices()
         voice_names = [name for name, _ in self.voices]
         current_voice = self.config_data.get("tts", {}).get("voice", voice_names[0] if voice_names else "")
-
-        ttk.Label(voice_frame, text="Voice:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        rf = ttk.Frame(parent); rf.pack(fill="x")
+        ttk.Label(rf, text="Voice:").grid(row=0, column=0, sticky="w", padx=(0,12), pady=3)
         self.voice_var = tk.StringVar(value=current_voice)
         if voice_names:
-            voice_combo = ttk.Combobox(voice_frame, textvariable=self.voice_var, width=35,
-                                       values=voice_names, state="readonly")
-            voice_combo.grid(row=0, column=1, sticky="w")
+            ttk.Combobox(rf, textvariable=self.voice_var, width=30, values=voice_names, state="readonly").grid(row=0, column=1, sticky="w")
+        ttk.Label(rf, text="Speed:").grid(row=1, column=0, sticky="w", padx=(0,12), pady=3)
+        self.speed_var = tk.StringVar(value=self.config_data.get("tts", {}).get("rate", "normal"))
+        ttk.Combobox(rf, textvariable=self.speed_var, width=30, values=["slow","normal","fast"], state="readonly").grid(row=1, column=1, sticky="w")
 
-        ttk.Label(voice_frame, text="Speed:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=3)
-        current_speed = self.config_data.get("tts", {}).get("rate", "normal")
-        self.speed_var = tk.StringVar(value=current_speed)
-        speed_combo = ttk.Combobox(voice_frame, textvariable=self.speed_var, width=35,
-                                   values=["slow", "normal", "fast"], state="readonly")
-        speed_combo.grid(row=1, column=1, sticky="w")
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
-        # --- Performance ---
-        ttk.Label(main, text="PERFORMANCE", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
-
-        perf_frame = ttk.Frame(main)
-        perf_frame.pack(fill="x", pady=2)
-
+        ttk.Label(parent, text="Performance", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
         current_compute = self.config_data.get("compute_type", "int8")
-        mode_label = "Power Mode (NVIDIA GPU)" if current_compute == "float16" else "Standard Mode (CPU)"
-        ttk.Label(perf_frame, text=f"Current mode:  {mode_label}").pack(anchor="w")
-
+        mode_text = "Power Mode  (NVIDIA GPU)" if current_compute == "float16" else "Standard Mode  (CPU)"
+        ttk.Label(parent, text=f"Current: {mode_text}").pack(anchor="w")
         self._perf_status_var = tk.StringVar(value="")
-        ttk.Label(perf_frame, textvariable=self._perf_status_var,
-                  foreground="#a6e3a1").pack(anchor="w", pady=(2, 0))
-
-        perf_btn_row = ttk.Frame(perf_frame)
-        perf_btn_row.pack(anchor="w", pady=(6, 0))
-        ttk.Button(perf_btn_row, text="Check GPU", command=self._check_gpu).pack(side="left", padx=(0, 8))
+        ttk.Label(parent, textvariable=self._perf_status_var, foreground="#2e7d32").pack(anchor="w", pady=(2,0))
+        pbr = ttk.Frame(parent); pbr.pack(anchor="w", pady=(6,0))
+        ttk.Button(pbr, text="Check GPU", command=self._check_gpu).pack(side="left", padx=(0, 6))
         if current_compute != "float16":
-            ttk.Button(perf_btn_row, text="Enable Power Mode",
-                       command=self._enable_power_mode).pack(side="left", padx=(0, 8))
+            ttk.Button(pbr, text="Enable Power Mode", command=self._enable_power_mode).pack(side="left", padx=(0, 6))
         else:
-            ttk.Button(perf_btn_row, text="Switch to Standard Mode",
-                       command=self._disable_power_mode).pack(side="left", padx=(0, 8))
-        ttk.Button(perf_btn_row, text="Learn more",
-                   command=self._open_cuda_url).pack(side="left")
+            ttk.Button(pbr, text="Switch to Standard Mode", command=self._disable_power_mode).pack(side="left", padx=(0, 6))
+        ttk.Button(pbr, text="Learn more", command=self._open_cuda_url).pack(side="left")
 
-        # --- History ---
-        ttk.Label(main, text="HISTORY", style="Header.TLabel").pack(anchor="w", pady=(15, 5))
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
-        hist_frame = ttk.Frame(main)
-        hist_frame.pack(fill="x", pady=2)
-        ttk.Button(hist_frame, text="View transcript history", command=self._open_history).pack(side="left", padx=(0, 10))
-        ttk.Button(hist_frame, text="Export history", command=self._export_history).pack(side="left")
-
-        # --- Buttons ---
-        btn_frame = ttk.Frame(main)
-        btn_frame.pack(fill="x", pady=(20, 0))
-
-        ttk.Button(btn_frame, text="Save & Restart Koda", command=self.save_and_restart).pack(side="left", padx=(0, 10))
-        ttk.Button(btn_frame, text="Save", command=self.save).pack(side="left", padx=(0, 10))
-        ttk.Button(btn_frame, text="Cancel", command=self.on_close).pack(side="left")
+        ttk.Label(parent, text="History", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        hbr = ttk.Frame(parent); hbr.pack(anchor="w")
+        ttk.Button(hbr, text="View transcript history", command=self._open_history).pack(side="left", padx=(0, 8))
+        ttk.Button(hbr, text="Export history", command=self._export_history).pack(side="left")
 
     def _get_voices(self):
         try:

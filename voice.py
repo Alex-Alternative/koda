@@ -1224,22 +1224,18 @@ def _watchdog_thread():
 
 def build_menu():
     hotkey_dict = config.get("hotkey_dictation", "ctrl+space").upper()
-    hotkey_cmd = config.get("hotkey_command", "f8").upper()
-    hotkey_prompt = config.get("hotkey_prompt", "f9").upper()
-    hotkey_corr = config.get("hotkey_correction", "f7").upper()
-    hotkey_read = config.get("hotkey_readback", "f6").upper()
-    hotkey_read_sel = config.get("hotkey_readback_selected", "f5").upper()
-    mode = config.get("hotkey_mode", "hold")
-    mode_label = "Hold-to-talk" if mode == "hold" else "Toggle (auto-stop)"
-    wake_enabled = config.get("wake_word", {}).get("enabled", False)
-    output_mode = config.get("output_mode", "auto_paste")
-    output_label = "Auto-paste" if output_mode == "auto_paste" else "Clipboard only"
+    hotkey_cmd  = config.get("hotkey_command", "f8").upper()
+    mode        = config.get("hotkey_mode", "hold")
+    mode_label  = "Hold-to-talk" if mode == "hold" else "Toggle"
+
+    tools_menu = pystray.Menu(
+        pystray.MenuItem("Transcribe audio file",           lambda icon, item: _open_transcribe_file()),
+        pystray.MenuItem("Install Explorer right-click",    lambda icon, item: _install_context_menu()),
+        pystray.MenuItem("Usage stats",                     lambda icon, item: _open_stats()),
+    )
 
     return pystray.Menu(
-        pystray.MenuItem(f"Koda v{VERSION}", None, enabled=False),
-        pystray.MenuItem(f"{hotkey_dict} = Dictation  |  {hotkey_cmd} = Command", None, enabled=False),
-        pystray.MenuItem(f"{hotkey_prompt} = Prompt Assist  |  {hotkey_corr} = Redo", None, enabled=False),
-        pystray.MenuItem(f"{hotkey_read} = Read back  |  Mode: {mode_label}", None, enabled=False),
+        pystray.MenuItem(f"Koda v{VERSION}  —  {hotkey_dict} dictation  |  {hotkey_cmd} command  |  {mode_label}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(
             "Sound effects",
@@ -1252,73 +1248,17 @@ def build_menu():
             checked=lambda item: config.get("post_processing", {}).get("remove_filler_words", True),
         ),
         pystray.MenuItem(
-            "Code vocabulary",
-            toggle_post_processing("code_vocabulary"),
-            checked=lambda item: config.get("post_processing", {}).get("code_vocabulary", False),
-        ),
-        pystray.MenuItem(
-            "Voice commands (select all, undo...)",
-            toggle_setting("voice_commands"),
-            checked=lambda item: config.get("voice_commands", True),
-        ),
-        pystray.MenuItem(
-            "Auto-format (numbers, dates)",
-            toggle_post_processing("auto_format"),
-            checked=lambda item: config.get("post_processing", {}).get("auto_format", True),
-        ),
-        pystray.MenuItem(
-            "Noise reduction",
-            toggle_setting("noise_reduction"),
-            checked=lambda item: config.get("noise_reduction", False),
-        ),
-        pystray.MenuItem(
-            "LLM polish (Ollama)",
-            toggle_llm_polish,
-            checked=lambda item: config.get("llm_polish", {}).get("enabled", False),
-        ),
-        pystray.MenuItem(
-            "Translation",
-            pystray.Menu(*_build_translation_menu_items()),
-        ),
-        pystray.MenuItem(
-            f'Wake word ("Hey Koda")',
-            toggle_wake_word,
-            checked=lambda item: config.get("wake_word", {}).get("enabled", False),
-        ),
-        pystray.MenuItem(
-            f"Output: {output_label}",
-            toggle_output_mode,
-        ),
-        pystray.MenuItem(
-            "Read-back voice",
-            pystray.Menu(*_build_voice_menu_items()),
-        ),
-        pystray.MenuItem(
-            "Read-back speed",
-            pystray.Menu(*_build_speed_menu_items()),
-        ),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem(
             "Switch to Toggle mode" if mode == "hold" else "Switch to Hold mode",
             switch_mode,
-        ),
-        pystray.MenuItem(
-            f"Per-app profiles{' (' + profile_monitor.current_profile + ')' if profile_monitor and profile_monitor.current_profile else ''}",
-            toggle_profiles,
-            checked=lambda item: config.get("profiles_enabled", True),
         ),
         pystray.MenuItem(
             "Floating overlay",
             toggle_overlay,
             checked=lambda item: overlay is not None and overlay.is_visible,
         ),
-        pystray.MenuItem("Transcribe audio file", lambda icon, item: _open_transcribe_file()),
-        pystray.MenuItem("Install Explorer right-click menu", lambda icon, item: _install_context_menu()),
-        pystray.MenuItem("Edit custom words", lambda icon, item: _open_custom_words()),
-        pystray.MenuItem("Edit app profiles", lambda icon, item: _open_profiles()),
-        pystray.MenuItem("Usage stats", lambda icon, item: _open_stats()),
-        pystray.MenuItem("Settings window", lambda icon, item: _open_settings_gui()),
-        pystray.MenuItem("Open config file", lambda icon, item: open_config_file()),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Settings",    lambda icon, item: _open_settings_gui()),
+        pystray.MenuItem("Tools",       tools_menu),
         # Plugin menu items
         *[pystray.MenuItem(label, lambda icon, item, cb=cb: cb())
           for label, cb in plugins.get_all_menu_items()],
