@@ -666,6 +666,7 @@ def _transcribe_and_paste():
                     "auto_format": config.get("post_processing", {}).get("auto_format", True),
                 },
                 "custom_vocabulary": custom_vocab,
+                "snippets": config.get("snippets", {}),
             }
             processed = process_text(text, light_config)
 
