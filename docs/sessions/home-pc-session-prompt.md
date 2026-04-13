@@ -11,13 +11,21 @@ cd C:\Users\alex\Projects\koda
 
 ## STEP 1: Sync and verify before anything else
 
-1. Pull latest from GitHub (work PC pushed several fixes today):
-   git pull origin master
+IMPORTANT — do these in this exact order to avoid conflicts:
 
-2. Check for any uncommitted work from last time on this machine:
+1. Check for uncommitted work on THIS machine first (before pulling):
    git status
-   If there are changes, commit and push with a descriptive message before
-   doing anything else — cross-PC sync depends on this.
+   If there are any changes (modified, untracked, staged), commit and push
+   them NOW before doing anything else:
+     git add -p   (stage selectively) or git add <specific files>
+     git commit -m "WIP: home PC work from last session"
+     git push origin master
+   Do not skip this — pulling with local changes can cause conflicts or
+   silently overwrite work.
+
+2. Now pull the work PC changes:
+   git pull origin master
+   If there are merge conflicts, resolve them before proceeding.
 
 3. Run from source (do NOT rebuild the installer for dev work):
    venv\Scripts\activate
