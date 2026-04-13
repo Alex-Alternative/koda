@@ -470,10 +470,10 @@ class KodaSettings(tk.Tk):
                         "Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force"],
                        capture_output=True)
         time.sleep(0.5)
-        # Restart
+        # Restart — DETACHED_PROCESS so it survives this process exiting
         start_bat = os.path.join(SCRIPT_DIR, "start.bat")
         subprocess.Popen(["cmd", "/c", start_bat], cwd=SCRIPT_DIR,
-                         creationflags=subprocess.CREATE_NO_WINDOW)
+                         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
         self.destroy()
 
     def _open_custom_words(self):
