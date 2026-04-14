@@ -6,9 +6,9 @@ RegisterHotKey registers directly with the OS Window Manager and
 survives screen lock, sleep/wake, UAC, and fast-user-switching —
 conditions that silently kill WH_KEYBOARD_LL hooks.
 
-For hold-mode releases, a lightweight WH_KEYBOARD_LL hook watches
-ONLY for WM_KEYUP on trigger keys. No timing pressure; dispatched
-by the same GetMessage loop, so it can't be starved.
+For hold-mode releases, a background thread polls GetAsyncKeyState
+on the trigger key. This installs zero system hooks and therefore
+cannot block keyboard input under any circumstances.
 
 Protocol (over multiprocessing.Pipe): identical to previous version.
     Child → Parent:
@@ -50,9 +50,6 @@ MOD_WIN        = 0x0008
 MOD_NOREPEAT   = 0x4000  # suppress WM_HOTKEY repeat while key is held
 
 WM_HOTKEY      = 0x0312
-WM_KEYUP       = 0x0101
-WM_SYSKEYUP    = 0x0105
-WH_KEYBOARD_LL = 13
 
 # Custom thread message used by the pipe-reader thread to wake the GetMessage loop
 WM_APP_PIPE    = 0x8001
@@ -115,19 +112,6 @@ class _MSG(ctypes.Structure):
         ("pt",      ctypes.wintypes.POINT),
     ]
 
-
-class _KBDLLHOOKSTRUCT(ctypes.Structure):
-    _fields_ = [
-        ("vkCode",      ctypes.wintypes.DWORD),
-        ("scanCode",    ctypes.wintypes.DWORD),
-        ("flags",       ctypes.wintypes.DWORD),
-        ("time",        ctypes.wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-_HOOKPROC = ctypes.WINFUNCTYPE(
-    ctypes.c_long, ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM
-)
 
 
 # ── Service entry point ──────────────────────────────────────────────────────
@@ -199,12 +183,12 @@ def service_main(conn, hotkey_config):
     _reg(hotkey_read,      5, "readback")
     _reg(hotkey_read_sel,  6, "readback_selected")
 
-    # ── WH_KEYBOARD_LL for hold-mode key-up events ───────────────────────────
+    # ── GetAsyncKeyState polling for hold-mode key-up events ────────────────
     # RegisterHotKey fires on key-down only. For hold mode we need the key-up
-    # to send _release events. A lightweight LL hook covers just that.
-    # The hook callback is dispatched by GetMessageW below — no timing issues.
-    _hook_handle = None
-    _hook_cb_ref = None  # keep reference alive to prevent GC
+    # to send _release events. We use GetAsyncKeyState polling instead of a
+    # WH_KEYBOARD_LL hook — polling installs zero system hooks and therefore
+    # cannot block keyboard input if the message loop is slow to start.
+    # Poll interval 10ms gives ≤10ms release latency, fine for voice recording.
 
     if mode == "hold":
         _release_vks: dict[int, str] = {}
@@ -217,20 +201,29 @@ def service_main(conn, hotkey_config):
             if vk:
                 _release_vks[vk] = evt
 
-        def _ll_proc(nCode, wParam, lParam):
-            if nCode >= 0 and wParam in (WM_KEYUP, WM_SYSKEYUP):
-                kb = ctypes.cast(lParam, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
-                evt = _release_vks.get(kb.vkCode)
-                if evt:
-                    _touch()
-                    _send(evt)
-            return user32.CallNextHookEx(None, nCode, wParam, lParam)
+        _active_press_vks: set[int] = set()
+        _active_press_lock = threading.Lock()
 
-        _hook_cb_ref = _HOOKPROC(_ll_proc)
-        _hook_handle = user32.SetWindowsHookExW(WH_KEYBOARD_LL, _hook_cb_ref, None, 0)
-        if not _hook_handle:
-            logger.error("SetWindowsHookExW failed err=%d — release events won't fire",
-                         kernel32.GetLastError())
+        def _poll_key_release():
+            """Background thread: poll GetAsyncKeyState for tracked key releases."""
+            while not _quit.is_set():
+                with _active_press_lock:
+                    tracked = list(_active_press_vks)
+                for vk in tracked:
+                    # Bit 15 = key is currently down
+                    if not (user32.GetAsyncKeyState(vk) & 0x8000):
+                        evt = _release_vks.get(vk)
+                        if evt:
+                            _touch()
+                            _send(evt)
+                        with _active_press_lock:
+                            _active_press_vks.discard(vk)
+                time.sleep(0.01)
+
+        threading.Thread(target=_poll_key_release, daemon=True).start()
+    else:
+        _active_press_vks = None
+        _active_press_lock = None
 
     # ── Pipe-reader thread ───────────────────────────────────────────────────
     # Runs on a daemon thread. Puts commands in _cmd_queue and posts
@@ -269,6 +262,20 @@ def service_main(conn, hotkey_config):
                 if evt:
                     _touch()
                     _send(evt)
+                    # For hold mode, track the trigger key so the poller
+                    # can detect its release and send the _release event.
+                    if _active_press_vks is not None and evt.endswith("_press"):
+                        hk_str_map = {
+                            "dictation_press": hotkey_dict,
+                            "command_press":   hotkey_cmd,
+                            "prompt_press":    hotkey_prompt,
+                        }
+                        hk_str = hk_str_map.get(evt)
+                        if hk_str:
+                            vk = _trigger_vk(hk_str)
+                            if vk:
+                                with _active_press_lock:
+                                    _active_press_vks.add(vk)
 
             elif msg.message == WM_APP_PIPE:
                 while not _cmd_queue.empty():
@@ -285,13 +292,10 @@ def service_main(conn, hotkey_config):
                             last_t = _last_key[0]
                         _send(("pong", last_t))
 
-            # LL hook callbacks and other messages are dispatched here
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
 
     finally:
         for hk_id in _registered_ids:
             user32.UnregisterHotKey(None, hk_id)
-        if _hook_handle:
-            user32.UnhookWindowsHookEx(_hook_handle)
         logger.info("Hotkey service stopped (pid=%d)", os.getpid())
