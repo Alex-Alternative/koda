@@ -1,7 +1,7 @@
 # Koda — Session Status
 
-> **Updated:** 2026-04-13 (Session 17)
-> **Version:** v4.2.0 | **Tests:** 176 passing (`test_features.py`) | **Branch:** master
+> **Updated:** 2026-04-13 (Session 21)
+> **Version:** v4.2.0 | **Tests:** 187 passing (`test_features.py`) | **Branch:** master
 
 ---
 
@@ -9,21 +9,20 @@
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 9 — Beta Stability | PARTIAL | Tests 1 (mic) + 2 (sleep/wake) PASS. Test 3 (RDP) NOT run |
+| 9 — Beta Stability | PARTIAL | Tests 1 (mic) + 2 (sleep/wake) PASS. Test 3 (RDP) pending |
 | 10 — Custom Vocabulary | DONE | Session 13, commit 68ce846 |
 | 11 — Per-App Profiles | DONE | Session 14, commit cd9d3c8 |
 | 12 — Filler Words + Snippets GUI | DONE | Session 17. Smoke test PASS. |
-| 13 — Installer / Distribution | NOT STARTED | Unblocked. Rebuild exe first. |
+| 13 — Installer / Distribution | IN PROGRESS | Koda.exe rebuilt (529MB). koda.iss has branding. Needs Inno Setup 6 to compile. |
 
 ---
 
 ## Next Session Actions (Priority Order)
 
-1. **Verify Settings UI** — open Settings from tray, confirm tabs + light theme look correct
-2. **Phase 9 Test 3** — RDP: connect via RDP, verify Ctrl+Space fires
-3. **Rebuild dist/Koda.exe** — current exe predates snippets fix + save_and_restart fix
-4. **Commit untracked files** — STATUS.md + filler_words.json + handover doc
-5. **Phase 13** — installer/exe distribution for work PC
+1. **Phase 9 Test 3** — RDP: connect via RDP, verify Ctrl+Space fires (only thing left for phase 9)
+2. **Install Inno Setup 6** — https://jrsoftware.org/isdl.php — then run `python installer/build_installer.py`
+3. **Test KodaSetup.exe** — install on a fresh machine / work PC, verify wizard shows logo + branding
+4. **Verify Settings UI** — open Settings from tray, confirm tabs + light theme look correct
 
 ---
 
