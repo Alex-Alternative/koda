@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koda User Guide</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f5f5f5;
+      padding: 40px 20px;
+    }
+
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      background: #1a1a2e;
+      color: white;
+      padding: 40px 48px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .header .subtitle {
+      color: #a0a8c0;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #4f46e5;
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-top: 12px;
+    }
+
+    .content {
+      padding: 40px 48px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-top: 40px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    h2:first-child { margin-top: 0; }
+
+    p { margin-bottom: 12px; color: #333; }
+
+    .hotkey-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 2px;
+      margin: 16px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e8e8e8;
+    }
+
+    .hotkey-grid .header-row {
+      background: #1a1a2e;
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 16px;
+    }
+
+    .hotkey-grid .cell {
+      padding: 12px 16px;
+      background: #fff;
+      font-size: 14px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .hotkey-grid .cell:nth-child(odd) { background: #fafafa; }
+
+    kbd {
+      display: inline-block;
+      background: #1a1a2e;
+      color: #fff;
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-size: 13px;
+      font-family: monospace;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tip {
+      background: #f0f4ff;
+      border-left: 4px solid #4f46e5;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .tip strong { color: #4f46e5; }
+
+    .warning {
+      background: #fff8f0;
+      border-left: 4px solid #f59e0b;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+
+    .warning strong { color: #b45309; }
+
+    .steps {
+      counter-reset: step;
+      margin: 16px 0;
+    }
+
+    .step {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 12px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      counter-increment: step;
+      min-width: 28px;
+      height: 28px;
+      background: #4f46e5;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .step-text { padding-top: 4px; font-size: 14px; }
+
+    .mic-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e8e8e8;
+    }
+
+    .mic-table th {
+      background: #1a1a2e;
+      color: white;
+      text-align: left;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mic-table td {
+      padding: 12px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .mic-table tr:last-child td { border-bottom: none; }
+    .mic-table tr:nth-child(even) td { background: #fafafa; }
+
+    .quality {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .quality.good { background: #dcfce7; color: #166534; }
+    .quality.better { background: #dbeafe; color: #1e40af; }
+    .quality.best { background: #f3e8ff; color: #6b21a8; }
+
+    .troubleshoot-item {
+      margin-bottom: 20px;
+    }
+
+    .troubleshoot-item .problem {
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+
+    .troubleshoot-item .solution {
+      font-size: 14px;
+      color: #444;
+      padding-left: 14px;
+      border-left: 3px solid #e0e0e0;
+    }
+
+    .footer {
+      background: #fafafa;
+      border-top: 1px solid #f0f0f0;
+      padding: 24px 48px;
+      font-size: 13px;
+      color: #888;
+      text-align: center;
+    }
+
+    .footer a { color: #4f46e5; text-decoration: none; }
+
+    @media print {
+      body { background: white; padding: 0; }
+      .page { box-shadow: none; border-radius: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <div class="header">
+      <h1>Koda User Guide</h1>
+      <div class="subtitle">Push-to-talk voice transcription for Windows</div>
+      <div class="badge">Version 4.2.0</div>
+    </div>
+
+    <div class="content">
+
+      <h2>What is Koda?</h2>
+      <p>Koda is a push-to-talk voice transcription tool for Windows. Press a hotkey, speak, and your words are instantly typed into whatever you're working in — emails, Slack, Word, Excel, ChatGPT, anything.</p>
+      <p>No clicking a mic button. No switching apps. Just talk.</p>
+
+      <h2>Installation</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><div class="step-text">Double-click <strong>KodaSetup-4.2.0.exe</strong></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-text">If Windows shows a "protected your PC" warning, click <strong>More info → Run anyway</strong></div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-text">Follow the installer wizard — takes about 2 minutes</div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-text">Koda launches automatically when done</div></div>
+      </div>
+      <div class="tip"><strong>Look for the tray icon</strong> — Koda appears in the bottom-right corner of your screen near the clock. That's how you know it's running.</div>
+
+      <h2>Basic Usage</h2>
+      <div class="hotkey-grid">
+        <div class="header-row">Action</div>
+        <div class="header-row">What to do</div>
+        <div class="cell">Start recording</div>
+        <div class="cell">Hold <kbd>Ctrl + Space</kbd></div>
+        <div class="cell">Speak</div>
+        <div class="cell">Talk naturally while holding the keys</div>
+        <div class="cell">Paste transcription</div>
+        <div class="cell">Release <kbd>Ctrl + Space</kbd></div>
+      </div>
+      <p>Your words appear in whatever app or text field was active when you pressed the hotkey.</p>
+      <div class="tip"><strong>Tips:</strong> Speak at a normal pace. Works in emails, Slack, Word, Excel, browsers, and chat apps. A quiet room gives better accuracy than an expensive microphone.</div>
+
+      <h2>All Hotkeys</h2>
+      <div class="hotkey-grid">
+        <div class="header-row">Hotkey</div>
+        <div class="header-row">What it does</div>
+        <div class="cell"><kbd>Ctrl + Space</kbd></div>
+        <div class="cell">Hold to dictate, release to paste</div>
+        <div class="cell"><kbd>F9</kbd></div>
+        <div class="cell">Prompt Assist — speak an idea, get a structured prompt for ChatGPT or Claude</div>
+        <div class="cell"><kbd>F7</kbd></div>
+        <div class="cell">Correction — re-transcribes your last recording if it came out wrong</div>
+        <div class="cell"><kbd>F6</kbd></div>
+        <div class="cell">Read back — Koda reads your last transcription aloud</div>
+      </div>
+
+      <h2>Microphone Guide</h2>
+      <p>You don't need an expensive microphone. Here's what to expect from each type:</p>
+      <table class="mic-table">
+        <tr>
+          <th>Microphone</th>
+          <th>Quality</th>
+          <th>Notes</th>
+        </tr>
+        <tr>
+          <td>Built-in laptop mic</td>
+          <td><span class="quality good">Good</span></td>
+          <td>Works well in a quiet room</td>
+        </tr>
+        <tr>
+          <td>USB headset / earbuds</td>
+          <td><span class="quality better">Better</span></td>
+          <td>Recommended — affordable at $15–40</td>
+        </tr>
+        <tr>
+          <td>Dedicated USB mic</td>
+          <td><span class="quality best">Best</span></td>
+          <td>Blue Yeti, HyperX — $60–100</td>
+        </tr>
+      </table>
+      <div class="tip"><strong>Biggest factor:</strong> A quiet environment matters more than mic quality. Background noise reduces accuracy more than anything else.</div>
+      <div class="warning"><strong>Make sure your mic is set as the default recording device in Windows:</strong><br>Right-click the speaker icon → Sound settings → Choose your input device</div>
+
+      <h2>Troubleshooting</h2>
+
+      <div class="troubleshoot-item">
+        <div class="problem">Koda isn't pasting anything</div>
+        <div class="solution">Click into the text field first, then press the hotkey. Check the tray icon is showing (not paused).</div>
+      </div>
+
+      <div class="troubleshoot-item">
+        <div class="problem">Hotkeys stopped working</div>
+        <div class="solution">Right-click the tray icon → Quit, then relaunch Koda. This is rare — Koda recovers from most hotkey issues automatically.</div>
+      </div>
+
+      <div class="troubleshoot-item">
+        <div class="problem">Transcription is inaccurate</div>
+        <div class="solution">Try the Accurate model in Settings (slower but more precise). Reduce background noise. Speak closer to the mic.</div>
+      </div>
+
+      <div class="troubleshoot-item">
+        <div class="problem">No microphone detected</div>
+        <div class="solution">Plug in your mic before launching Koda, then set it as the default recording device in Windows Sound Settings.</div>
+      </div>
+
+      <h2>Uninstalling</h2>
+      <p>Go to <strong>Windows Settings → Apps → Installed apps</strong>, find <strong>Koda</strong>, and click <strong>Uninstall</strong>.</p>
+
+    </div>
+
+    <div class="footer">
+      Koda v4.2.0 &nbsp;·&nbsp; <a href="mailto:alex@kodaspeak.com">alex@kodaspeak.com</a> &nbsp;·&nbsp; kodaspeak.com
+    </div>
+
+  </div>
+</body>
+</html>
