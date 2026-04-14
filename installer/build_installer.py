@@ -87,6 +87,11 @@ def main():
             print(f"\nShare this file — users double-click to install.")
             break
 
+    # Clean up intermediate Koda.exe — only the installer is needed
+    if os.path.exists(KODA_EXE):
+        os.remove(KODA_EXE)
+        print("Cleaned up intermediate Koda.exe from dist/")
+
 
 if __name__ == "__main__":
     main()
