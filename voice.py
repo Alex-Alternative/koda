@@ -617,7 +617,7 @@ def _transcribe_and_paste():
             "vad_filter": True,
             "condition_on_previous_text": False,  # each press is independent; prevents prior mishear from poisoning next segment
             "no_speech_threshold": 0.6,           # explicit default — tunable
-            "logprob_threshold": -0.8,            # reject low-confidence guesses (default -1.0 too permissive)
+            "log_prob_threshold": -0.8,            # reject low-confidence guesses (default -1.0 too permissive)
         }
 
         # Whisper's built-in translate task: any language → English

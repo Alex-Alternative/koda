@@ -97,7 +97,7 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 
 [UninstallRun]
 ; Kill Koda before uninstall
-Filename: "taskkill"; Parameters: "/f /im {#MyAppExeName}"; Flags: runhidden
+Filename: "taskkill"; Parameters: "/f /im {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillKoda"
 
 [UninstallDelete]
 ; Clean up runtime files

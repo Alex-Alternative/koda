@@ -131,7 +131,7 @@ VOICE_COMMANDS = [
     (r"move word right", _action_move_word_right, "Move cursor one word right"),
 
     # Selection
-    (r"select all", _action_select_all, "Select all text"),
+    (r"select (?:all|alt|ole|hall|everything)", _action_select_all, "Select all text"),
     (r"select (?:the )?(?:whole )?line", _action_select_line, "Select current line"),
     (r"select (?:the )?(?:last )?word", _action_select_word, "Select previous word"),
     (r"select to (?:the )?end", _action_select_to_end, "Select to end of line"),
