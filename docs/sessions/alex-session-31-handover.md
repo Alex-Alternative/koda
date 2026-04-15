@@ -1,7 +1,7 @@
 # Alex Session 31 Handover — 2026-04-15
 
 ## Branch
-`session-30-excel-actions-user-guide` — 2 commits ahead of `master`. **PR #7 open** at Moonhawk80/koda#7. Not yet merged.
+`session-30-excel-actions-user-guide` — 4 commits ahead of `master`. **PR #7 open** at Moonhawk80/koda#7. Not yet merged.
 
 ---
 
@@ -33,7 +33,17 @@ Terminal mode: 'CD slash user slash Alex' -> 'CD /user/Alex'
 
 Added `terminal_mode.py` to the `DATA_FILES` list. It was missing — session 30 added the module but forgot to add it to the exe bundle. Without this, the installed exe would fail to import terminal_mode at runtime.
 
-### 4. Exe + Installer Rebuilt
+### 4. HTML User Guide Updated (`docs/user-guide.html`)
+
+The HTML guide is a simplified end-user version (shared with coworkers etc.) — it was out of date with session 30 features.
+
+- Fixed hotkey: `F9` → `Ctrl + F9` throughout
+- Added `F8` (Command mode) to hotkeys table — was missing entirely
+- Updated `Ctrl+Space` description to mention terminal mode auto-activation
+- **New: Terminal Mode section** — symbol table, Windows backslash note
+- **New: Excel Voice Navigation section** — cell/column/row navigation, table creation
+
+### 5. Exe + Installer Rebuilt
 
 - `dist/Koda.exe` — rebuilt with PyInstaller, 559 MB (before installer cleanup)
 - `dist/KodaSetup-4.2.0.exe` — rebuilt with Inno Setup, **534 MB**, ready to share with coworker
@@ -58,7 +68,8 @@ Added `terminal_mode.py` to the `DATA_FILES` list. It was missing — session 30
 - **"What are the diagnostic debug lines if they are not needed then remove"** — Diagnostic lines added during investigation should always be removed before closing out. Don't leave temporary debug code in.
 - **"CD /user/Alex is the wrong command for PowerShell or cmd — it should be backslash right?"** — Correct. Windows paths use `\`. User said "slash" in the test which maps to `/`. The normalization is correct — you get what you say. Added Windows backslash example to user guide.
 - **"I hate that. Control Space needs to be the basics of this. If we have to go to terminal mode to use code, then it should be a fade."** — Rejected the F8 workaround entirely. Removed the bad note from user guide immediately.
-- **"Also don't forget to update the user manual... as well as the new EXE updated on this computer that way I can share with my co-worker"** — User guide in PR ✓. Installer rebuilt at dist/KodaSetup-4.2.0.exe ✓.
+- **"Also don't forget to update the user manual... as well as the new EXE updated on this computer that way I can share with my co-worker"** — User guide (md + html) in PR ✓. Installer rebuilt at dist/KodaSetup-4.2.0.exe ✓.
+- **"But what about my home PC — how will it know which is the new install?"** — `dist/` is gitignored, installer doesn't travel via git. Solution: GitHub Release with installer as a downloadable asset. Confirmed as next session priority #1.
 
 ---
 
@@ -67,7 +78,7 @@ Added `terminal_mode.py` to the `DATA_FILES` list. It was missing — session 30
 - **PR #7 merge** — `session-30-excel-actions-user-guide` → `master`. Contains: terminal_mode.py bundle fix, Windows backslash user guide example, removal of bad F8 note.
 - **PR #6 already merged** — session 30 work (Excel COM actions, terminal mode, user guide rewrite) is on master.
 - **Coworker install test** — Share `dist/KodaSetup-4.2.0.exe`. Does session 25 model mismatch fix resolve their install? (carried over from sessions 25+)
-- **GitHub Release v4.2.0** — blocked on coworker confirmation (carried over)
+- **GitHub Release v4.2.0** — **TOP PRIORITY next session.** `dist/` is gitignored so the installer doesn't travel with the repo. Home PC and coworker need a GitHub Release to download the installer. User confirmed they want this done next session.
 - **Formula mode end-to-end test** — ctrl+f9 in Excel: "if B1 is greater than 10 then yes else no", "average of column B", "today". Not yet tested live.
 - **Excel navigation live test** — ctrl+f9 in Excel: "go to B5", "select column C", "make a table". Not yet tested live (COM automation only tested via mock).
 - **Installer wizard test** — `dist/KodaSetup-4.2.0.exe` not yet tested on a fresh machine (carried over from sessions 28-29, now rebuilt).
@@ -77,9 +88,9 @@ Added `terminal_mode.py` to the `DATA_FILES` list. It was missing — session 30
 
 ## Next Session Priorities
 
-1. **Merge PR #7** — review and merge `session-30-excel-actions-user-guide` (2 small commits: build fix + user guide)
-2. **Coworker follow-up** — share `dist/KodaSetup-4.2.0.exe`, confirm install works
-3. **GitHub Release v4.2.0** — once coworker confirms, create release on GitHub
+1. **Merge PR #7** — review and merge `session-30-excel-actions-user-guide` (4 commits: build fix, user guide md + html, handover)
+2. **GitHub Release v4.2.0** — create release on GitHub and upload `dist/KodaSetup-4.2.0.exe` as release asset. This is how home PC and coworker get the installer. Rebuild the installer first if `dist/KodaSetup-4.2.0.exe` is no longer present (PyInstaller build takes ~5 min, installer ~1 min).
+3. **Coworker follow-up** — share the GitHub Release download link, confirm install works
 4. **Live test Excel actions** — ctrl+f9 in Excel: navigation (go to B5, select column C), table creation, formula (average of column B)
 5. **Installer wizard test** — run fresh `KodaSetup-4.2.0.exe`, verify 4 pages, check `%APPDATA%\Koda\config.json`
 6. **Pro/non-pro Excel onboarding** — first-launch question + guided formula wizard for non-pros (discussed in session 30, not built)
@@ -93,7 +104,8 @@ Added `terminal_mode.py` to the `DATA_FILES` list. It was missing — session 30
 | `voice.py` | Added then removed temporary diagnostic debug lines (net: 2 lines removed vs session 30 state — the `Mode=%r proc=%r title=%r` block) |
 | `docs/user-guide.md` | Added Windows backslash path example; added then removed F8/Claude Code note; net: +2 lines |
 | `build_exe.py` | Added `terminal_mode.py` to DATA_FILES list |
-| `dist/KodaSetup-4.2.0.exe` | Rebuilt (534 MB) — includes all session 30+31 changes |
+| `docs/user-guide.html` | Added Terminal Mode + Excel Navigation sections; fixed F9→Ctrl+F9; added F8 hotkey |
+| `dist/KodaSetup-4.2.0.exe` | Rebuilt (534 MB) — includes all session 30+31 changes. Local only — not in git. |
 
 ---
 
