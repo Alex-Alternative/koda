@@ -242,8 +242,6 @@ Hold **Ctrl + Space**, speak your command naturally using words for symbols, the
 
 > **Windows paths use backslash** — say "backslash" for `\`. Unix paths (WSL, Git Bash) use "slash" for `/`.
 
-> **Using Koda inside Claude Code or another CLI tool?** Terminal mode will activate there too. For regular prose dictation in a terminal (not shell commands), use **F8 (Command mode)** instead of Ctrl+Space — Command mode skips terminal detection.
-
 ---
 
 ## Undoing a Paste
