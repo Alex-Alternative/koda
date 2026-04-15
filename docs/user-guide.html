@@ -283,11 +283,13 @@
         <div class="header-row">Hotkey</div>
         <div class="header-row">What it does</div>
         <div class="cell"><kbd>Ctrl + Space</kbd></div>
-        <div class="cell">Hold to dictate, release to paste</div>
-        <div class="cell"><kbd>F9</kbd></div>
-        <div class="cell">Prompt Assist — speak an idea, get a structured prompt for ChatGPT or Claude</div>
+        <div class="cell">Hold to dictate, release to paste. In a terminal window, spoken symbols are converted automatically (see Terminal Mode below)</div>
+        <div class="cell"><kbd>Ctrl + F9</kbd></div>
+        <div class="cell">In Excel or Google Sheets — Formula Mode (speak a formula, navigate, or create a table). Everywhere else — Prompt Assist (speak an idea, get a structured prompt for ChatGPT or Claude)</div>
+        <div class="cell"><kbd>F8</kbd></div>
+        <div class="cell">Command mode — full cleanup with filler word removal</div>
         <div class="cell"><kbd>F7</kbd></div>
-        <div class="cell">Correction — re-transcribes your last recording if it came out wrong</div>
+        <div class="cell">Correction — undoes your last paste and starts a new recording so you can try again</div>
         <div class="cell"><kbd>F6</kbd></div>
         <div class="cell">Read back — Koda reads your last transcription aloud</div>
       </div>
@@ -337,6 +339,40 @@
       </table>
       <div class="tip"><strong>No match?</strong> If your phrase doesn't match a formula pattern, Koda pastes it as normal text — so regular dictation in Excel still works.</div>
       <div class="tip"><strong>Complex formulas:</strong> Install <a href="https://ollama.com" target="_blank">Ollama</a> (free, local AI) and enable LLM Polish in Settings. Run <code>ollama pull phi3:mini</code> once to set it up.</div>
+
+      <h2>Terminal Mode (Command Line)</h2>
+      <p>When you use <kbd>Ctrl + Space</kbd> inside a terminal (Windows Terminal, PowerShell, Command Prompt, Git Bash, WSL), Koda automatically converts spoken symbols into shell syntax. No setup needed — it activates whenever a terminal is the active window.</p>
+      <table class="mic-table">
+        <tr>
+          <th>What you say</th>
+          <th>What Koda types</th>
+        </tr>
+        <tr><td>cd slash users slash alex slash projects</td><td><kbd>cd /users/alex/projects</kbd></td></tr>
+        <tr><td>cd backslash users backslash alex backslash projects</td><td><kbd>cd \users\alex\projects</kbd></td></tr>
+        <tr><td>git dash dash version</td><td><kbd>git --version</kbd></td></tr>
+        <tr><td>ls dash l</td><td><kbd>ls -l</kbd></td></tr>
+        <tr><td>tilde slash projects slash koda</td><td><kbd>~/projects/koda</kbd></td></tr>
+        <tr><td>cat file dot txt pipe grep error</td><td><kbd>cat file.txt | grep error</kbd></td></tr>
+      </table>
+      <div class="tip"><strong>Windows paths use backslash</strong> — say "backslash" for <code>\</code>. Unix paths (WSL, Git Bash) use "slash" for <code>/</code>.</div>
+      <div class="tip"><strong>Auto-capitalize is off in terminal mode</strong> — "cd /users" stays lowercase, not "Cd /users".</div>
+
+      <h2>Excel Voice Navigation</h2>
+      <p>In Excel or Google Sheets, hold <kbd>Ctrl + F9</kbd> and speak to navigate and manage your spreadsheet by voice:</p>
+      <table class="mic-table">
+        <tr>
+          <th>What you say</th>
+          <th>What happens</th>
+        </tr>
+        <tr><td>go to B5 / navigate to B5</td><td>Jumps to cell B5</td></tr>
+        <tr><td>select column C</td><td>Selects the entire column C</td></tr>
+        <tr><td>select row 5</td><td>Selects the entire row 5</td></tr>
+        <tr><td>go home / go to first cell</td><td>Jumps to A1</td></tr>
+        <tr><td>go to last row</td><td>Jumps to the last row with data</td></tr>
+        <tr><td>select all</td><td>Selects the entire used range</td></tr>
+        <tr><td>make a table / create a table</td><td>Formats your selection as an Excel Table with auto-filter</td></tr>
+        <tr><td>create a table with columns Name Date Amount</td><td>Writes those headers and creates a table</td></tr>
+      </table>
 
       <h2>Troubleshooting</h2>
 
