@@ -43,7 +43,9 @@ Ran the `forge-clean` skill on koda — a whole-codebase audit across 7 tracks (
 
 ## Skipped Intentionally
 
-- **`toggle_overlay` (Track 1 H4)** — dead in the tray menu, but the overlay-toggle capability has no direct equivalent in settings_gui. Decision needed: delete the function AND drop the capability, or keep the function and re-wire it into `build_menu()`. Alexi to decide.
+(None — all HIGH items from all 7 tracks were resolved this session.
+`toggle_overlay` was also deleted after verifying the capability is
+preserved via Settings GUI + right-click-to-hide on the overlay itself.)
 
 ## Phase 2 Applied — Track 6 HIGH (all 6)
 
@@ -73,10 +75,10 @@ Location: `.forge-clean/run-20260418-022925/`
 
 ## What to Do Next Session
 
-1. **Decide on `toggle_overlay`** — capability gone or re-wire?
-2. **Merge the branch to master.** `git checkout master && git merge --no-ff chore/forge-clean && git push`.
-3. **(Optional) Add test for JSON-corruption recovery** — the Track 6 report suggests one: write `"{not json"` to profiles.json, restart, assert warning is logged and `.corrupt.<ts>` backup exists.
-4. **(Optional) Revisit Track 6 MEDIUM items (M1-M8)** — most are further OS/hardware boundary tightening. Listed in `.forge-clean/run-20260418-022925/track-6-error-handling.md`.
+1. **(Optional) Add test for JSON-corruption recovery** — the Track 6 report suggests one: write `"{not json"` to profiles.json, restart, assert warning is logged and `.corrupt.<ts>` backup exists.
+2. **(Optional) Revisit Track 6 MEDIUM items (M1-M8)** — most are further OS/hardware boundary tightening. Listed in `.forge-clean/run-20260418-022925/track-6-error-handling.md`.
+
+This session's branch was merged into master at the end of the session.
 
 ## Environment Notes (unchanged from session 19)
 
