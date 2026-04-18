@@ -386,7 +386,11 @@ def init_vad():
         vad_model = None
 
 
+_vad_warned = False
+
+
 def check_vad_silence(audio_chunk):
+    global _vad_warned
     if vad_model is not None:
         try:
             chunk_size = 512
@@ -395,8 +399,10 @@ def check_vad_silence(audio_chunk):
                 result = vad_model({"speech_prob": 0.5}, segment)
                 if hasattr(result, 'get'):
                     return result.get("speech_prob", 0) > 0.5
-        except Exception:
-            pass
+        except Exception as e:
+            if not _vad_warned:
+                logger.warning("Silero VAD inference failed: %s — falling back to RMS threshold", e)
+                _vad_warned = True
     rms = np.sqrt(np.mean(audio_chunk ** 2))
     return rms > 0.01
 

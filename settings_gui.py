@@ -6,8 +6,11 @@ Opens from the tray menu or desktop shortcut.
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
+import logging
 import os
 import sys
+
+logger = logging.getLogger("koda")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.json")
@@ -687,8 +690,8 @@ class KodaSettings(tk.Tk):
                 with open(self.CUSTOM_WORDS_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     return dict(data) if isinstance(data, dict) else {}
-            except Exception:
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error("Could not load custom_words.json: %s — user will see default list", e)
         return {"coda": "Koda", "claude code": "Claude Code"}
 
     def _save_custom_words_data(self):
