@@ -36,7 +36,7 @@ from voice_commands import extract_and_execute_commands
 from stats import init_stats_db as init_stats, log_transcription_stats, log_command_stats
 from plugin_manager import PluginManager
 from prompt_assist import refine_prompt
-from updater import check_for_update, open_releases_page
+from updater import check_for_update
 
 
 # --- Data directory (source vs frozen exe) ---

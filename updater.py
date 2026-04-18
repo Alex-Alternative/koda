@@ -92,8 +92,3 @@ def _is_newer(latest, current):
     except Exception:
         # Fallback: simple string comparison
         return latest != current
-
-
-def open_releases_page():
-    """Open the GitHub releases page in the default browser."""
-    webbrowser.open(RELEASES_PAGE)
