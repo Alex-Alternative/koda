@@ -25,7 +25,7 @@ import pyautogui
 import pystray
 from PIL import Image, ImageDraw
 
-from config import load_config, save_config
+from config import CONFIG_DIR, load_config, save_config
 from text_processing import process_text, apply_custom_vocabulary
 from history import init_db, save_transcription
 from overlay import KodaOverlay
@@ -39,16 +39,8 @@ from prompt_assist import refine_prompt
 from updater import check_for_update
 
 
-# --- Data directory (source vs frozen exe) ---
-def _get_data_dir():
-    if getattr(sys, "frozen", False):
-        base = os.environ.get("APPDATA") or os.path.expanduser("~")
-        d = os.path.join(base, "Koda")
-        os.makedirs(d, exist_ok=True)
-        return d
-    return os.path.dirname(os.path.abspath(__file__))
-
-_DATA_DIR = _get_data_dir()
+# --- Data directory (imported from config to keep source-vs-frozen resolution in one place) ---
+_DATA_DIR = CONFIG_DIR
 
 # --- Logging ---
 logging.basicConfig(
