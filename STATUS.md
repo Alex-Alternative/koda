@@ -1,6 +1,6 @@
 # Koda — Session Status
 
-> **Updated:** 2026-04-14 (Session 23)
+> **Updated:** 2026-04-19 (Session 38)
 > **Version:** v4.2.0 | **Tests:** 208 passing (`test_features.py` + `test_e2e.py`) | **Branch:** master
 
 ---
@@ -14,15 +14,17 @@
 | 11 — Per-App Profiles | DONE | Session 14, commit cd9d3c8 |
 | 12 — Filler Words + Snippets GUI | DONE | Session 17. Smoke test PASS. |
 | 13 — Installer / Distribution | IN PROGRESS | KodaSetup-4.2.0.exe built (529MB). Pending: work PC install test, feature gates, license keys, LemonSqueezy, landing page. |
+| **13B — Meeting Recording** | **NEW / PLANNED** | Pro-tier feature. Local loopback + mic capture → batch Whisper → summary. Privacy-first positioning for law/medical/finance. See `memory/roadmap_phases.md` for full scope. |
 
 ---
 
 ## Next Session Actions (Priority Order)
 
-1. **Work PC install test** — Install KodaSetup-4.2.0.exe on work PC, verify wizard + hotkeys + transcription
-2. **RDP test** — Phase 9 Test 3; connect from work PC to home PC via RDP, verify Ctrl+Space fires
-3. **Prompt Coach research** — Generate deep research prompt for new product (separate session, separate repo)
+1. **Skillforge pitch track resumes** — koda Test B smoke passed session 38; unblock session 10 pitch-prep (dry-run + boss pitch + v1.0.1 cosmetic)
+2. **Work PC install test** — Install KodaSetup-4.2.0.exe on work PC, verify wizard + hotkeys + transcription
+3. **RDP test** — Phase 9 Test 3; connect from work PC to home PC via RDP, verify Ctrl+Space fires
 4. **Phase 13 feature gates** — start free/Personal/Pro tier checks in code + license key system
+5. **Phase 13B — Meeting Recording** — after Phase 13 ships, build meeting feature as Pro-tier killer app (see roadmap memory for full plan; ~1–2 weeks eng)
 
 ---
 
