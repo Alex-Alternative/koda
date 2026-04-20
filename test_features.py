@@ -2218,5 +2218,47 @@ class TestTerminalNormalize(unittest.TestCase):
         self.assertIn(".txt", result)
 
 
+# ============================================================
+# Settings save_and_restart — frozen-exe relaunch (regression)
+# Reason: theme toggle / save-and-restart killed Koda but the relaunch
+# hard-coded venv/Scripts/pythonw.exe voice.py, which doesn't exist on an
+# installed frozen-exe machine — so Koda never came back.
+# ============================================================
+
+
+class TestSettingsRelaunchCommand(unittest.TestCase):
+    def setUp(self):
+        import sys as _sys
+        import settings_gui
+        self.settings_gui = settings_gui
+        self.sys = _sys
+        self._saved_frozen = getattr(_sys, "frozen", None)
+        self._saved_executable = _sys.executable
+
+    def tearDown(self):
+        if self._saved_frozen is None:
+            if hasattr(self.sys, "frozen"):
+                del self.sys.frozen
+        else:
+            self.sys.frozen = self._saved_frozen
+        self.sys.executable = self._saved_executable
+
+    def test_frozen_mode_relaunches_sys_executable_from_its_own_dir(self):
+        self.sys.frozen = True
+        self.sys.executable = r"C:\Program Files\Koda\Koda.exe"
+        args, cwd = self.settings_gui._build_relaunch_command()
+        self.assertEqual(args, [r"C:\Program Files\Koda\Koda.exe"])
+        self.assertEqual(cwd, r"C:\Program Files\Koda")
+
+    def test_source_mode_relaunches_venv_pythonw_with_voice_py(self):
+        if hasattr(self.sys, "frozen"):
+            del self.sys.frozen
+        args, cwd = self.settings_gui._build_relaunch_command()
+        self.assertEqual(len(args), 2)
+        self.assertTrue(args[0].endswith(os.path.join("venv", "Scripts", "pythonw.exe")))
+        self.assertEqual(args[1], "voice.py")
+        self.assertEqual(cwd, self.settings_gui.SCRIPT_DIR)
+
+
 if __name__ == "__main__":
     unittest.main()

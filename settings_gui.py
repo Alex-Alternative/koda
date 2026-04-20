@@ -37,6 +37,19 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ICO_PATH = os.path.join(SCRIPT_DIR, "koda.ico")
 
 
+def _build_relaunch_command():
+    """Return (args, cwd) for relaunching Koda after save_and_restart.
+
+    In a frozen exe, sys.executable IS Koda.exe — re-spawning it is the only
+    path that works because there's no venv/pythonw on an installed machine.
+    In source mode, use the venv's pythonw to launch voice.py directly.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable], os.path.dirname(sys.executable)
+    pythonw = os.path.join(SCRIPT_DIR, "venv", "Scripts", "pythonw.exe")
+    return [pythonw, "voice.py"], SCRIPT_DIR
+
+
 def _detect_system_theme():
     """Read Windows apps-theme preference. Returns 'light' or 'dark'.
 
@@ -735,15 +748,12 @@ class KodaSettings(tk.Tk):
         self.save()
         import subprocess
         import time
-        # Kill only the parent Koda process by PID — not all pythonw processes,
-        # since settings_gui itself runs as pythonw and would be self-killed.
         parent_pid = os.getppid()
         subprocess.run(["taskkill", "/f", "/pid", str(parent_pid)], capture_output=True)
         time.sleep(0.5)
-        # Restart — launch pythonw directly (bypasses start.bat activation quirks)
-        pythonw = os.path.join(SCRIPT_DIR, "venv", "Scripts", "pythonw.exe")
-        subprocess.Popen([pythonw, "voice.py"], cwd=SCRIPT_DIR,
-                         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+        args, cwd = _build_relaunch_command()
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        subprocess.Popen(args, cwd=cwd, creationflags=flags)
         self.destroy()
 
     def _open_custom_words(self):
