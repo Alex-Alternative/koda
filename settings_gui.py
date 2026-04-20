@@ -1,5 +1,5 @@
 """
-Koda Settings — Simple GUI for configuring Koda.
+Koda Settings — GUI for configuring Koda.
 Opens from the tray menu or desktop shortcut.
 """
 
@@ -20,6 +20,57 @@ logger = logging.getLogger("koda")
 # in a frozen exe, CONFIG_DIR points at %APPDATA%\Koda while voice.py lives
 # wherever the source tree is; these paths only coincide in dev mode.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ICO_PATH = os.path.join(SCRIPT_DIR, "koda.ico")
+
+
+def _detect_system_theme():
+    """Read Windows apps-theme preference. Returns 'light' or 'dark'.
+
+    Falls back to 'light' on any registry / non-Windows failure.
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        ) as key:
+            # AppsUseLightTheme: 0 = dark, 1 = light
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return "light" if value else "dark"
+    except Exception:
+        return "light"
+
+
+# Fluent-lite palette. `window` = outer chrome, `content` = tab-body panels.
+# Dark accent is brighter than light to keep contrast on dark bg.
+THEMES = {
+    "light": {
+        "window":    "#f5f5f5",
+        "content":   "#ffffff",
+        "border":    "#e5e7eb",
+        "text":      "#1f2937",
+        "text_dim":  "#6b7280",
+        "accent":    "#2563eb",
+        "accent_hv": "#1d4ed8",
+        "accent_fg": "#ffffff",
+        "success":   "#059669",
+        "hover":     "#eeeeee",
+        "tree_sel":  "#dbeafe",
+    },
+    "dark": {
+        "window":    "#1f1f1f",
+        "content":   "#2b2b2b",
+        "border":    "#404040",
+        "text":      "#e5e7eb",
+        "text_dim":  "#9ca3af",
+        "accent":    "#3b82f6",
+        "accent_hv": "#60a5fa",
+        "accent_fg": "#ffffff",
+        "success":   "#10b981",
+        "hover":     "#333333",
+        "tree_sel":  "#1e3a8a",
+    },
+}
 
 
 class KodaSettings(tk.Tk):
@@ -27,46 +78,191 @@ class KodaSettings(tk.Tk):
         super().__init__()
         self.title("Koda Settings")
         self.resizable(True, True)
-        BG = "#f4f4f4"
-        FG = "#1a1a1a"
-        ACCENT = "#1a56db"
-        self.configure(bg=BG)
 
         self.config_data = load_config()
+        # First launch: follow the OS apps-theme pref. Once the user clicks the
+        # toggle, we persist their explicit choice and stop auto-following.
+        self._theme_name = self.config_data.get("ui_theme") or _detect_system_theme()
         self._custom_words = self._load_custom_words_data()
         self._profiles_data = self._load_profiles_data()
         self._filler_words = self._load_filler_words_data()
         self._snippets = dict(self.config_data.get("snippets", {}))
 
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure(".",            background=BG,  foreground=FG,     font=("Segoe UI", 10))
-        style.configure("TFrame",       background=BG)
-        style.configure("TLabel",       background=BG,  foreground=FG,     font=("Segoe UI", 10))
-        style.configure("Header.TLabel",background=BG,  foreground=ACCENT, font=("Segoe UI", 10, "bold"))
-        style.configure("TCheckbutton", background=BG,  foreground=FG,     font=("Segoe UI", 10))
-        style.configure("TRadiobutton", background=BG,  foreground=FG,     font=("Segoe UI", 10))
-        style.configure("TButton",      font=("Segoe UI", 10))
-        style.configure("TCombobox",    font=("Segoe UI", 10))
-        style.configure("TEntry",       font=("Segoe UI", 10))
-        style.configure("TSeparator",   background="#d0d0d0")
-        style.configure("TNotebook",    background=BG, borderwidth=0)
-        style.configure("TNotebook.Tab",font=("Segoe UI", 10), padding=(12, 5))
+        # Track dialog toplevels so theme toggle can restyle them too.
+        self._open_dialogs = []
+
+        self._style = ttk.Style()
+        self._style.theme_use("clam")
+
+        # Window titlebar / taskbar icon.
+        try:
+            self.iconbitmap(ICO_PATH)
+        except tk.TclError:
+            pass
 
         self._build_ui()
+        self._apply_theme(self._theme_name)
+
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.update_idletasks()
-        self.geometry("620x680")
+        self.geometry("560x560")
+        self.minsize(500, 460)
+
+    # ---------- Theme plumbing ----------
+
+    def _palette(self):
+        return THEMES[self._theme_name]
+
+    def _apply_theme(self, name):
+        self._theme_name = name
+        t = THEMES[name]
+        self.configure(bg=t["window"])
+
+        s = self._style
+        s.configure(".",               background=t["window"],  foreground=t["text"],     font=("Segoe UI", 10))
+        s.configure("TFrame",          background=t["content"])
+        s.configure("Chrome.TFrame",   background=t["window"])
+        s.configure("TLabel",          background=t["content"], foreground=t["text"],     font=("Segoe UI", 10))
+        s.configure("Chrome.TLabel",   background=t["window"],  foreground=t["text"],     font=("Segoe UI", 10))
+        s.configure("Title.TLabel",    background=t["window"],  foreground=t["text"],     font=("Segoe UI", 13, "bold"))
+        s.configure("Header.TLabel",   background=t["content"], foreground=t["text"],     font=("Segoe UI", 11, "bold"))
+        s.configure("Dim.TLabel",      background=t["content"], foreground=t["text_dim"], font=("Segoe UI", 9))
+        s.configure("Success.TLabel",  background=t["content"], foreground=t["success"],  font=("Segoe UI", 10))
+
+        s.configure("TCheckbutton",    background=t["content"], foreground=t["text"],     font=("Segoe UI", 10))
+        s.map("TCheckbutton",          background=[("active", t["content"])])
+        s.configure("TRadiobutton",    background=t["content"], foreground=t["text"],     font=("Segoe UI", 10))
+        s.map("TRadiobutton",          background=[("active", t["content"])])
+
+        # Default button — used for the tray-style secondary actions inside tabs.
+        s.configure("TButton",
+                    background=t["content"], foreground=t["text"],
+                    bordercolor=t["border"], lightcolor=t["border"], darkcolor=t["border"],
+                    focusthickness=0, padding=(12, 6), font=("Segoe UI", 10))
+        s.map("TButton",
+              background=[("active", t["hover"]), ("pressed", t["hover"])],
+              bordercolor=[("active", t["border"])])
+
+        s.configure("Primary.TButton",
+                    background=t["accent"], foreground=t["accent_fg"],
+                    bordercolor=t["accent"], lightcolor=t["accent"], darkcolor=t["accent"],
+                    focusthickness=0, padding=(18, 8), font=("Segoe UI", 10, "bold"))
+        s.map("Primary.TButton",
+              background=[("active", t["accent_hv"]), ("pressed", t["accent_hv"])],
+              foreground=[("active", t["accent_fg"])],
+              bordercolor=[("active", t["accent_hv"])])
+
+        s.configure("Secondary.TButton",
+                    background=t["window"], foreground=t["text"],
+                    bordercolor=t["border"], lightcolor=t["border"], darkcolor=t["border"],
+                    focusthickness=0, padding=(18, 8), font=("Segoe UI", 10))
+        s.map("Secondary.TButton",
+              background=[("active", t["hover"]), ("pressed", t["hover"])])
+
+        # Toggle pill for the theme switch.
+        s.configure("Toggle.TButton",
+                    background=t["window"], foreground=t["text_dim"],
+                    bordercolor=t["border"], lightcolor=t["border"], darkcolor=t["border"],
+                    focusthickness=0, padding=(10, 4), font=("Segoe UI", 9))
+        s.map("Toggle.TButton",
+              background=[("active", t["hover"]), ("pressed", t["hover"])],
+              foreground=[("active", t["text"])])
+
+        s.configure("TCombobox",
+                    fieldbackground=t["content"], background=t["content"],
+                    foreground=t["text"], bordercolor=t["border"],
+                    lightcolor=t["border"], darkcolor=t["border"],
+                    arrowcolor=t["text"], selectbackground=t["accent"],
+                    selectforeground=t["accent_fg"], font=("Segoe UI", 10))
+        s.map("TCombobox",
+              fieldbackground=[("readonly", t["content"])],
+              foreground=[("readonly", t["text"])],
+              selectbackground=[("readonly", t["content"])],
+              selectforeground=[("readonly", t["text"])])
+
+        s.configure("TEntry",
+                    fieldbackground=t["content"], foreground=t["text"],
+                    bordercolor=t["border"], lightcolor=t["border"], darkcolor=t["border"],
+                    insertcolor=t["text"], font=("Segoe UI", 10))
+
+        s.configure("TSeparator", background=t["border"])
+
+        s.configure("TNotebook", background=t["window"], borderwidth=0, tabmargins=(2, 6, 2, 0))
+        s.configure("TNotebook.Tab",
+                    background=t["window"], foreground=t["text_dim"],
+                    bordercolor=t["border"], lightcolor=t["window"], darkcolor=t["window"],
+                    padding=(18, 10), font=("Segoe UI", 10))
+        s.map("TNotebook.Tab",
+              background=[("selected", t["content"]), ("active", t["hover"])],
+              foreground=[("selected", t["text"]), ("active", t["text"])],
+              lightcolor=[("selected", t["content"])],
+              darkcolor=[("selected", t["content"])])
+
+        s.configure("Treeview",
+                    background=t["content"], foreground=t["text"],
+                    fieldbackground=t["content"], bordercolor=t["border"],
+                    font=("Segoe UI", 10))
+        s.map("Treeview",
+              background=[("selected", t["tree_sel"])],
+              foreground=[("selected", t["text"])])
+        s.configure("Treeview.Heading",
+                    background=t["window"], foreground=t["text"],
+                    bordercolor=t["border"], font=("Segoe UI", 10, "bold"))
+        s.map("Treeview.Heading",
+              background=[("active", t["hover"])])
+
+        s.configure("Vertical.TScrollbar",
+                    background=t["window"], troughcolor=t["window"],
+                    bordercolor=t["border"], arrowcolor=t["text"])
+
+        # Re-theme any open Toplevel dialogs.
+        for dlg in list(self._open_dialogs):
+            try:
+                dlg.configure(bg=t["window"])
+            except tk.TclError:
+                self._open_dialogs.remove(dlg)
+
+        # Refresh theme toggle label.
+        if hasattr(self, "_theme_btn"):
+            self._theme_btn.configure(text=self._theme_toggle_label())
+
+    def _theme_toggle_label(self):
+        return "\u2600 Light" if self._theme_name == "dark" else "\U0001F319 Dark"
+
+    def _toggle_theme(self):
+        new_name = "dark" if self._theme_name == "light" else "light"
+        self._apply_theme(new_name)
+        self.config_data["ui_theme"] = new_name
+        save_config(self.config_data)
+
+    def _register_dialog(self, dlg):
+        """Apply current window bg to a Toplevel and track it for theme toggles."""
+        dlg.configure(bg=self._palette()["window"])
+        self._open_dialogs.append(dlg)
+        dlg.bind("<Destroy>", lambda e, d=dlg: self._open_dialogs.remove(d) if e.widget is d and d in self._open_dialogs else None)
+
+    # ---------- Layout ----------
 
     def _build_ui(self):
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+        # Bottom action bar — packed first so tall tabs can't push it off-screen.
+        btn_frame = ttk.Frame(self, style="Chrome.TFrame")
+        btn_frame.pack(side="bottom", fill="x", padx=16, pady=(8, 14))
+        ttk.Button(btn_frame, text="Save", style="Primary.TButton",
+                   command=self.save_and_restart).pack(side="right")
+        ttk.Button(btn_frame, text="Cancel", style="Secondary.TButton",
+                   command=self.on_close).pack(side="right", padx=(0, 8))
 
-        gen_tab  = ttk.Frame(notebook, padding=15)
-        hk_tab   = ttk.Frame(notebook, padding=15)
-        sp_tab   = ttk.Frame(notebook, padding=15)
-        wd_tab   = ttk.Frame(notebook, padding=15)
-        adv_tab  = ttk.Frame(notebook, padding=15)
+        sep = ttk.Separator(self, orient="horizontal")
+        sep.pack(side="bottom", fill="x", padx=16)
+
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill="both", expand=True, padx=16, pady=(14, 0))
+
+        gen_tab = ttk.Frame(notebook, padding=20)
+        hk_tab  = ttk.Frame(notebook, padding=20)
+        sp_tab  = ttk.Frame(notebook, padding=20)
+        wd_tab  = ttk.Frame(notebook, padding=20)
+        adv_tab = ttk.Frame(notebook, padding=20)
 
         notebook.add(gen_tab,  text="  General  ")
         notebook.add(hk_tab,   text="  Hotkeys  ")
@@ -80,32 +276,26 @@ class KodaSettings(tk.Tk):
         self._build_words_tab(wd_tab)
         self._build_advanced_tab(adv_tab)
 
-        sep = ttk.Separator(self, orient="horizontal")
-        sep.pack(fill="x", padx=10, pady=(8, 0))
-
-        btn_frame = ttk.Frame(self)
-        btn_frame.pack(fill="x", padx=10, pady=8)
-        ttk.Button(btn_frame, text="Save & Restart Koda", command=self.save_and_restart).pack(side="left", padx=(0, 8))
-        ttk.Button(btn_frame, text="Save", command=self.save).pack(side="left", padx=(0, 8))
-        ttk.Button(btn_frame, text="Cancel", command=self.on_close).pack(side="left")
+    def _section_header(self, parent, text, first=False):
+        ttk.Label(parent, text=text, style="Header.TLabel").pack(
+            anchor="w", pady=(0 if first else 16, 6))
 
     def _build_general_tab(self, parent):
-        ttk.Label(parent, text="Recording Mode", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "Recording Mode", first=True)
         self.mode_var = tk.StringVar(value=self.config_data.get("hotkey_mode", "hold"))
-        ttk.Radiobutton(parent, text="Hold-to-talk  (hold key while speaking)", variable=self.mode_var, value="hold").pack(anchor="w")
-        ttk.Radiobutton(parent, text="Toggle  (press once, auto-stops on silence)", variable=self.mode_var, value="toggle").pack(anchor="w")
+        ttk.Radiobutton(parent, text="Hold-to-talk  (hold key while speaking)",
+                        variable=self.mode_var, value="hold").pack(anchor="w", pady=1)
+        ttk.Radiobutton(parent, text="Toggle  (press once, auto-stops on silence)",
+                        variable=self.mode_var, value="toggle").pack(anchor="w", pady=1)
 
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(parent, text="Output", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "Output")
         self.output_var = tk.StringVar(value=self.config_data.get("output_mode", "auto_paste"))
-        ttk.Radiobutton(parent, text="Auto-paste  (types into the active window)", variable=self.output_var, value="auto_paste").pack(anchor="w")
-        ttk.Radiobutton(parent, text="Clipboard only  (no paste)", variable=self.output_var, value="clipboard").pack(anchor="w")
+        ttk.Radiobutton(parent, text="Auto-paste  (types into the active window)",
+                        variable=self.output_var, value="auto_paste").pack(anchor="w", pady=1)
+        ttk.Radiobutton(parent, text="Clipboard only  (no paste)",
+                        variable=self.output_var, value="clipboard").pack(anchor="w", pady=1)
 
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(parent, text="Features", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
-
+        self._section_header(parent, "Features")
         checks = [
             ("sound_effects",                       "sound_var",       "Sound effects",                              True,  None),
             ("post_processing.remove_filler_words", "filler_var",      "Remove filler words  (um, uh, you know)",    True,  "post_processing"),
@@ -121,14 +311,14 @@ class KodaSettings(tk.Tk):
                 val = self.config_data.get(cfg_key, default)
             var = tk.BooleanVar(value=val)
             setattr(self, attr, var)
-            ttk.Checkbutton(parent, text=label, variable=var).pack(anchor="w", pady=1)
+            ttk.Checkbutton(parent, text=label, variable=var).pack(anchor="w", pady=2)
 
     def _build_hotkeys_tab(self, parent):
         FKEY_OPTIONS = ["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12"]
         DICT_OPTIONS = ["ctrl+space", "ctrl+alt+d"] + FKEY_OPTIONS
         PROMPT_OPTIONS = [f"ctrl+f{n}" for n in range(1, 13)] + FKEY_OPTIONS
 
-        ttk.Label(parent, text="Hotkey Assignments", style="Header.TLabel").pack(anchor="w", pady=(0, 10))
+        self._section_header(parent, "Hotkey Assignments", first=True)
 
         self.hk_dict_var    = tk.StringVar(value=self.config_data.get("hotkey_dictation",          "ctrl+space"))
         self.hk_cmd_var     = tk.StringVar(value=self.config_data.get("hotkey_command",             "f8"))
@@ -138,50 +328,51 @@ class KodaSettings(tk.Tk):
         self.hk_readsel_var = tk.StringVar(value=self.config_data.get("hotkey_readback_selected",   "f5"))
 
         rows = [
-            ("Dictation:",     self.hk_dict_var,    DICT_OPTIONS),
-            ("Command:",       self.hk_cmd_var,      FKEY_OPTIONS),
-            ("Prompt Assist:", self.hk_prompt_var,   PROMPT_OPTIONS),
-            ("Correction:",    self.hk_corr_var,     FKEY_OPTIONS),
-            ("Read back:",     self.hk_read_var,     FKEY_OPTIONS),
-            ("Read selected:", self.hk_readsel_var,  FKEY_OPTIONS),
+            ("Dictation",     self.hk_dict_var,    DICT_OPTIONS),
+            ("Command",       self.hk_cmd_var,      FKEY_OPTIONS),
+            ("Prompt Assist", self.hk_prompt_var,   PROMPT_OPTIONS),
+            ("Correction",    self.hk_corr_var,     FKEY_OPTIONS),
+            ("Read back",     self.hk_read_var,     FKEY_OPTIONS),
+            ("Read selected", self.hk_readsel_var,  FKEY_OPTIONS),
         ]
         f = ttk.Frame(parent)
-        f.pack(fill="x")
+        f.pack(fill="x", pady=(4, 0))
         for i, (label, var, opts) in enumerate(rows):
-            ttk.Label(f, text=label).grid(row=i, column=0, sticky="w", padx=(0, 14), pady=4)
-            ttk.Combobox(f, textvariable=var, values=opts, width=18, state="readonly").grid(row=i, column=1, sticky="w")
+            ttk.Label(f, text=label).grid(row=i, column=0, sticky="w", padx=(0, 18), pady=6)
+            ttk.Combobox(f, textvariable=var, values=opts, width=18, state="readonly").grid(row=i, column=1, sticky="w", pady=6)
 
     def _build_speech_tab(self, parent):
-        ttk.Label(parent, text="Whisper Model", style="Header.TLabel").pack(anchor="w", pady=(0, 8))
+        self._section_header(parent, "Whisper Model", first=True)
 
         f = ttk.Frame(parent)
         f.pack(fill="x")
 
-        ttk.Label(f, text="Model size:").grid(row=0, column=0, sticky="w", padx=(0, 14), pady=4)
+        ttk.Label(f, text="Model size").grid(row=0, column=0, sticky="w", padx=(0, 18), pady=6)
         self.model_var = tk.StringVar(value=self.config_data.get("model_size", "base"))
         ttk.Combobox(f, textvariable=self.model_var, width=24,
                      values=["tiny", "base", "small", "medium", "large-v2", "large-v3",
                              "large-v3-turbo", "distil-large-v3", "distil-medium.en"],
-                     state="readonly").grid(row=0, column=1, sticky="w")
+                     state="readonly").grid(row=0, column=1, sticky="w", pady=6)
 
-        ttk.Label(f, text="Language:").grid(row=1, column=0, sticky="w", padx=(0, 14), pady=4)
+        ttk.Label(f, text="Language").grid(row=1, column=0, sticky="w", padx=(0, 18), pady=6)
         self.lang_var = tk.StringVar(value=self.config_data.get("language", "en"))
         ttk.Combobox(f, textvariable=self.lang_var, width=24,
                      values=["en","es","fr","de","pt","zh","ja","ko","ar","hi","ru","it","nl","pl","tr","auto"],
-                     state="readonly").grid(row=1, column=1, sticky="w")
+                     state="readonly").grid(row=1, column=1, sticky="w", pady=6)
 
-        ttk.Label(parent, text="\nLarger models are more accurate but slower to load.\n"
-                               "tiny/base = fastest  |  small = best balance  |  large = highest accuracy",
-                  foreground="#888888").pack(anchor="w")
+        ttk.Label(parent,
+                  text="Larger models are more accurate but slower to load.\n"
+                       "tiny/base = fastest  ·  small = best balance  ·  large = highest accuracy",
+                  style="Dim.TLabel").pack(anchor="w", pady=(14, 0))
 
     def _build_words_tab(self, parent):
         sub = ttk.Notebook(parent)
         sub.pack(fill="both", expand=True)
 
-        cw_tab = ttk.Frame(sub, padding=10)
-        fw_tab = ttk.Frame(sub, padding=10)
-        sn_tab = ttk.Frame(sub, padding=10)
-        pr_tab = ttk.Frame(sub, padding=10)
+        cw_tab = ttk.Frame(sub, padding=14)
+        fw_tab = ttk.Frame(sub, padding=14)
+        sn_tab = ttk.Frame(sub, padding=14)
+        pr_tab = ttk.Frame(sub, padding=14)
 
         sub.add(cw_tab, text="  Custom Words  ")
         sub.add(fw_tab, text="  Filler Words  ")
@@ -189,63 +380,81 @@ class KodaSettings(tk.Tk):
         sub.add(pr_tab, text="  App Profiles  ")
 
         # Custom Words
-        ttk.Label(cw_tab, text="Replace misheard words with the correct version:").pack(anchor="w", pady=(0, 5))
+        ttk.Label(cw_tab, text="Replace misheard words with the correct version:",
+                  style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         tf = ttk.Frame(cw_tab); tf.pack(fill="both", expand=True)
         self._vocab_tree = ttk.Treeview(tf, columns=("misheard","correct"), show="headings", height=8, selectmode="browse")
         self._vocab_tree.heading("misheard", text="Misheard"); self._vocab_tree.heading("correct", text="Replace with")
-        self._vocab_tree.column("misheard", width=200, anchor="w"); self._vocab_tree.column("correct", width=200, anchor="w")
+        self._vocab_tree.column("misheard", width=140, minwidth=80, anchor="w", stretch=True)
+        self._vocab_tree.column("correct",  width=180, minwidth=100, anchor="w", stretch=True)
         self._vocab_tree.pack(side="left", fill="both", expand=True)
         s = ttk.Scrollbar(tf, orient="vertical", command=self._vocab_tree.yview)
         self._vocab_tree.configure(yscrollcommand=s.set); s.pack(side="left", fill="y")
         self._refresh_vocab_tree()
-        br = ttk.Frame(cw_tab); br.pack(anchor="w", pady=(6,0))
+        br = ttk.Frame(cw_tab); br.pack(anchor="w", pady=(10, 0))
         for lbl, cmd in [("Add", self._add_vocab_entry), ("Edit", self._edit_vocab_entry),
                          ("Remove", self._remove_vocab_entry), ("Import", self._import_vocab), ("Export", self._export_vocab)]:
-            ttk.Button(br, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
+            ttk.Button(br, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
         # Filler Words
-        ttk.Label(fw_tab, text="Removed from speech when filler removal is enabled:").pack(anchor="w", pady=(0, 5))
+        ttk.Label(fw_tab, text="Removed from speech when filler removal is enabled:",
+                  style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         ff = ttk.Frame(fw_tab); ff.pack(fill="both", expand=True)
         self._filler_tree = ttk.Treeview(ff, columns=("word",), show="headings", height=8, selectmode="browse")
-        self._filler_tree.heading("word", text="Word / Phrase"); self._filler_tree.column("word", width=440, anchor="w")
+        self._filler_tree.heading("word", text="Word / Phrase")
+        self._filler_tree.column("word", width=320, minwidth=160, anchor="w", stretch=True)
         self._filler_tree.pack(side="left", fill="both", expand=True)
         fs = ttk.Scrollbar(ff, orient="vertical", command=self._filler_tree.yview)
         self._filler_tree.configure(yscrollcommand=fs.set); fs.pack(side="left", fill="y")
         self._refresh_filler_tree()
-        fbr = ttk.Frame(fw_tab); fbr.pack(anchor="w", pady=(6,0))
+        fbr = ttk.Frame(fw_tab); fbr.pack(anchor="w", pady=(10, 0))
         for lbl, cmd in [("Add", self._add_filler_word), ("Remove", self._remove_filler_word), ("Restore defaults", self._restore_filler_defaults)]:
-            ttk.Button(fbr, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
+            ttk.Button(fbr, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
         # Snippets
-        ttk.Label(sn_tab, text="Say the trigger word alone to paste the full expansion:").pack(anchor="w", pady=(0, 5))
+        ttk.Label(sn_tab, text="Say the trigger word alone to paste the full expansion:",
+                  style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         sf = ttk.Frame(sn_tab); sf.pack(fill="both", expand=True)
         self._snippets_tree = ttk.Treeview(sf, columns=("trigger","expansion"), show="headings", height=8, selectmode="browse")
         self._snippets_tree.heading("trigger", text="Trigger"); self._snippets_tree.heading("expansion", text="Expansion")
-        self._snippets_tree.column("trigger", width=140, anchor="w"); self._snippets_tree.column("expansion", width=300, anchor="w")
+        self._snippets_tree.column("trigger",   width=110, minwidth=70,  anchor="w", stretch=False)
+        self._snippets_tree.column("expansion", width=220, minwidth=120, anchor="w", stretch=True)
         self._snippets_tree.pack(side="left", fill="both", expand=True)
         ss = ttk.Scrollbar(sf, orient="vertical", command=self._snippets_tree.yview)
         self._snippets_tree.configure(yscrollcommand=ss.set); ss.pack(side="left", fill="y")
         self._refresh_snippets_tree()
-        sbr = ttk.Frame(sn_tab); sbr.pack(anchor="w", pady=(6,0))
+        sbr = ttk.Frame(sn_tab); sbr.pack(anchor="w", pady=(10, 0))
         for lbl, cmd in [("Add", self._add_snippet), ("Edit", self._edit_snippet), ("Remove", self._remove_snippet)]:
-            ttk.Button(sbr, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
+            ttk.Button(sbr, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
         # App Profiles
-        ttk.Label(pr_tab, text="Auto-switch settings based on the active window:").pack(anchor="w", pady=(0, 5))
+        ttk.Label(pr_tab, text="Auto-switch settings based on the active window:",
+                  style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         pf = ttk.Frame(pr_tab); pf.pack(fill="both", expand=True)
         self._profile_tree = ttk.Treeview(pf, columns=("name","match","overrides"), show="headings", height=8, selectmode="browse")
         self._profile_tree.heading("name", text="Profile"); self._profile_tree.heading("match", text="Matches"); self._profile_tree.heading("overrides", text="Overrides")
-        self._profile_tree.column("name", width=110, anchor="w"); self._profile_tree.column("match", width=170, anchor="w"); self._profile_tree.column("overrides", width=160, anchor="w")
+        self._profile_tree.column("name",      width=90,  minwidth=70,  anchor="w", stretch=False)
+        self._profile_tree.column("match",     width=130, minwidth=100, anchor="w", stretch=True)
+        self._profile_tree.column("overrides", width=120, minwidth=90,  anchor="w", stretch=True)
         self._profile_tree.pack(side="left", fill="both", expand=True)
         ps = ttk.Scrollbar(pf, orient="vertical", command=self._profile_tree.yview)
         self._profile_tree.configure(yscrollcommand=ps.set); ps.pack(side="left", fill="y")
         self._refresh_profile_tree()
-        pbr = ttk.Frame(pr_tab); pbr.pack(anchor="w", pady=(6,0))
+        pbr = ttk.Frame(pr_tab); pbr.pack(anchor="w", pady=(10, 0))
         for lbl, cmd in [("Add", self._add_profile), ("Edit", self._edit_profile), ("Remove", self._remove_profile), ("Edit JSON", self._open_profiles)]:
-            ttk.Button(pbr, text=lbl, command=cmd).pack(side="left", padx=(0, 4))
+            ttk.Button(pbr, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
     def _build_advanced_tab(self, parent):
-        ttk.Label(parent, text="Behavior", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "Appearance", first=True)
+        ar = ttk.Frame(parent); ar.pack(fill="x", pady=(0, 4))
+        ttk.Label(ar, text="Theme").pack(side="left", padx=(0, 12))
+        self._theme_btn = ttk.Button(ar, text=self._theme_toggle_label(),
+                                     style="Toggle.TButton", command=self._toggle_theme)
+        self._theme_btn.pack(side="left")
+        ttk.Label(ar, text="  (follows system on first launch)",
+                  style="Dim.TLabel").pack(side="left", padx=(10, 0))
+
+        self._section_header(parent, "Behavior")
 
         behavior_checks = [
             ("overlay_enabled",                 "overlay_var",   "Floating status overlay",                   False, None),
@@ -261,45 +470,41 @@ class KodaSettings(tk.Tk):
                 val = self.config_data.get(cfg_key, default)
             var = tk.BooleanVar(value=val)
             setattr(self, attr, var)
-            ttk.Checkbutton(parent, text=label, variable=var).pack(anchor="w", pady=1)
+            ttk.Checkbutton(parent, text=label, variable=var).pack(anchor="w", pady=2)
 
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(parent, text="Translation", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "Translation")
         self.trans_var = tk.BooleanVar(value=self.config_data.get("translation", {}).get("enabled", False))
-        ttk.Checkbutton(parent, text="Enable translation  (speak one language, output another)", variable=self.trans_var).pack(anchor="w")
-        lf = ttk.Frame(parent); lf.pack(fill="x", pady=(4, 0))
-        ttk.Label(lf, text="Target language:").pack(side="left", padx=(0, 10))
+        ttk.Checkbutton(parent, text="Enable translation  (speak one language, output another)",
+                        variable=self.trans_var).pack(anchor="w", pady=2)
+        lf = ttk.Frame(parent); lf.pack(fill="x", pady=(6, 0))
+        ttk.Label(lf, text="Target language").pack(side="left", padx=(0, 12))
         self.trans_lang_var = tk.StringVar(value=self.config_data.get("translation", {}).get("target_language", "English"))
         ttk.Combobox(lf, textvariable=self.trans_lang_var, width=18,
                      values=["English","Spanish","French","German","Portuguese","Japanese","Korean","Chinese","Italian","Russian"],
                      state="readonly").pack(side="left")
-        ttk.Label(lf, text="  English = Whisper  |  Others = Ollama", foreground="#888888").pack(side="left", padx=(10, 0))
+        ttk.Label(lf, text="English = Whisper  ·  Others = Ollama",
+                  style="Dim.TLabel").pack(side="left", padx=(12, 0))
 
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(parent, text="Read-back Voice", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "Read-back Voice")
         self.voices = self._get_voices()
         voice_names = [name for name, _ in self.voices]
         current_voice = self.config_data.get("tts", {}).get("voice", voice_names[0] if voice_names else "")
         rf = ttk.Frame(parent); rf.pack(fill="x")
-        ttk.Label(rf, text="Voice:").grid(row=0, column=0, sticky="w", padx=(0,12), pady=3)
+        ttk.Label(rf, text="Voice").grid(row=0, column=0, sticky="w", padx=(0, 14), pady=5)
         self.voice_var = tk.StringVar(value=current_voice)
         if voice_names:
-            ttk.Combobox(rf, textvariable=self.voice_var, width=30, values=voice_names, state="readonly").grid(row=0, column=1, sticky="w")
-        ttk.Label(rf, text="Speed:").grid(row=1, column=0, sticky="w", padx=(0,12), pady=3)
+            ttk.Combobox(rf, textvariable=self.voice_var, width=30, values=voice_names, state="readonly").grid(row=0, column=1, sticky="w", pady=5)
+        ttk.Label(rf, text="Speed").grid(row=1, column=0, sticky="w", padx=(0, 14), pady=5)
         self.speed_var = tk.StringVar(value=self.config_data.get("tts", {}).get("rate", "normal"))
-        ttk.Combobox(rf, textvariable=self.speed_var, width=30, values=["slow","normal","fast"], state="readonly").grid(row=1, column=1, sticky="w")
+        ttk.Combobox(rf, textvariable=self.speed_var, width=30, values=["slow","normal","fast"], state="readonly").grid(row=1, column=1, sticky="w", pady=5)
 
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(parent, text="Performance", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "Performance")
         current_compute = self.config_data.get("compute_type", "int8")
         mode_text = "Power Mode  (NVIDIA GPU)" if current_compute == "float16" else "Standard Mode  (CPU)"
         ttk.Label(parent, text=f"Current: {mode_text}").pack(anchor="w")
         self._perf_status_var = tk.StringVar(value="")
-        ttk.Label(parent, textvariable=self._perf_status_var, foreground="#2e7d32").pack(anchor="w", pady=(2,0))
-        pbr = ttk.Frame(parent); pbr.pack(anchor="w", pady=(6,0))
+        ttk.Label(parent, textvariable=self._perf_status_var, style="Success.TLabel").pack(anchor="w", pady=(2, 0))
+        pbr = ttk.Frame(parent); pbr.pack(anchor="w", pady=(8, 0))
         ttk.Button(pbr, text="Check GPU", command=self._check_gpu).pack(side="left", padx=(0, 6))
         if current_compute != "float16":
             ttk.Button(pbr, text="Enable Power Mode", command=self._enable_power_mode).pack(side="left", padx=(0, 6))
@@ -307,9 +512,7 @@ class KodaSettings(tk.Tk):
             ttk.Button(pbr, text="Switch to Standard Mode", command=self._disable_power_mode).pack(side="left", padx=(0, 6))
         ttk.Button(pbr, text="Learn more", command=self._open_cuda_url).pack(side="left")
 
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(parent, text="History", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        self._section_header(parent, "History")
         hbr = ttk.Frame(parent); hbr.pack(anchor="w")
         ttk.Button(hbr, text="View transcript history", command=self._open_history).pack(side="left", padx=(0, 8))
         ttk.Button(hbr, text="Export history", command=self._export_history).pack(side="left")
@@ -322,7 +525,7 @@ class KodaSettings(tk.Tk):
         except Exception:
             return []
 
-    def save(self, notify=True):
+    def save(self):
         cfg = self.config_data
 
         cfg["hotkey_dictation"] = self.hk_dict_var.get()
@@ -341,6 +544,7 @@ class KodaSettings(tk.Tk):
         cfg["overlay_enabled"] = self.overlay_var.get()
         cfg["profiles_enabled"] = self.profiles_var.get()
         cfg["voice_commands"] = self.voicecmds_var.get()
+        cfg["ui_theme"] = self._theme_name
 
         trans = cfg.setdefault("translation", {})
         trans["enabled"] = self.trans_var.get()
@@ -360,11 +564,9 @@ class KodaSettings(tk.Tk):
         self._save_custom_words_data()
         self._save_profiles_data()
         self._save_filler_words_data()
-        if notify:
-            messagebox.showinfo("Koda", "Settings saved.")
 
     def save_and_restart(self):
-        self.save(notify=False)
+        self.save()
         import subprocess
         import time
         # Kill only the parent Koda process by PID — not all pythonw processes,
@@ -438,27 +640,27 @@ class KodaSettings(tk.Tk):
 
         dlg = tk.Toplevel(self)
         dlg.title(title)
-        dlg.geometry("440x300")
+        dlg.geometry("460x320")
         dlg.resizable(False, False)
-        dlg.configure(bg="#1e1e2e")
+        self._register_dialog(dlg)
         dlg.grab_set()
 
         result = [None]
 
-        ttk.Label(dlg, text="Profile name:").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 4))
+        ttk.Label(dlg, text="Profile name").grid(row=0, column=0, sticky="w", padx=14, pady=(16, 4))
         name_var = tk.StringVar(value=name)
-        ttk.Entry(dlg, textvariable=name_var, width=28).grid(row=0, column=1, padx=(0, 12), pady=(14, 4))
+        ttk.Entry(dlg, textvariable=name_var, width=28).grid(row=0, column=1, padx=(0, 14), pady=(16, 4))
 
-        ttk.Label(dlg, text="Match process (e.g. code.exe):").grid(row=1, column=0, sticky="w", padx=12, pady=4)
+        ttk.Label(dlg, text="Match process (e.g. code.exe)").grid(row=1, column=0, sticky="w", padx=14, pady=4)
         proc_var = tk.StringVar(value=match_rules.get("process", ""))
-        ttk.Entry(dlg, textvariable=proc_var, width=28).grid(row=1, column=1, padx=(0, 12), pady=4)
+        ttk.Entry(dlg, textvariable=proc_var, width=28).grid(row=1, column=1, padx=(0, 14), pady=4)
 
-        ttk.Label(dlg, text="Match title regex (optional):").grid(row=2, column=0, sticky="w", padx=12, pady=4)
+        ttk.Label(dlg, text="Match title regex (optional)").grid(row=2, column=0, sticky="w", padx=14, pady=4)
         title_var = tk.StringVar(value=match_rules.get("title", ""))
-        ttk.Entry(dlg, textvariable=title_var, width=28).grid(row=2, column=1, padx=(0, 12), pady=4)
+        ttk.Entry(dlg, textvariable=title_var, width=28).grid(row=2, column=1, padx=(0, 14), pady=4)
 
-        ttk.Label(dlg, text="Overrides (inherit = base config):").grid(
-            row=3, column=0, columnspan=2, sticky="w", padx=12, pady=(10, 2))
+        ttk.Label(dlg, text="Overrides (inherit = base config)",
+                  style="Dim.TLabel").grid(row=3, column=0, columnspan=2, sticky="w", padx=14, pady=(12, 4))
 
         override_vars = {}
         override_row = 4
@@ -471,10 +673,10 @@ class KodaSettings(tk.Tk):
             val = "on" if pp_overrides.get(key) is True else ("off" if pp_overrides.get(key) is False else "inherit")
             var = tk.StringVar(value=val)
             override_vars[key] = var
-            ttk.Label(dlg, text=f"  {label}:").grid(row=override_row, column=0, sticky="w", padx=12, pady=2)
+            ttk.Label(dlg, text=f"  {label}").grid(row=override_row, column=0, sticky="w", padx=14, pady=2)
             ttk.Combobox(dlg, textvariable=var, values=["inherit", "on", "off"],
                          state="readonly", width=10).grid(row=override_row, column=1, sticky="w",
-                                                          padx=(0, 12), pady=2)
+                                                          padx=(0, 14), pady=2)
             override_row += 1
 
         def on_ok(*_):
@@ -503,9 +705,9 @@ class KodaSettings(tk.Tk):
             dlg.destroy()
 
         btn_row = ttk.Frame(dlg)
-        btn_row.grid(row=override_row, column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(btn_row, text="OK", command=on_ok).pack(side="left", padx=6)
-        ttk.Button(btn_row, text="Cancel", command=dlg.destroy).pack(side="left")
+        btn_row.grid(row=override_row, column=0, columnspan=2, pady=(14, 0))
+        ttk.Button(btn_row, text="OK", style="Primary.TButton", command=on_ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", style="Secondary.TButton", command=dlg.destroy).pack(side="left")
 
         dlg.wait_window()
         return result[0]
@@ -558,15 +760,15 @@ class KodaSettings(tk.Tk):
     def _add_filler_word(self):
         dlg = tk.Toplevel(self)
         dlg.title("Add Filler Word")
-        dlg.geometry("340x110")
+        dlg.geometry("360x120")
         dlg.resizable(False, False)
-        dlg.configure(bg="#1e1e2e")
+        self._register_dialog(dlg)
         dlg.grab_set()
         result = [None]
-        ttk.Label(dlg, text="Word or phrase to remove:").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 4))
+        ttk.Label(dlg, text="Word or phrase to remove").grid(row=0, column=0, sticky="w", padx=14, pady=(16, 4))
         word_var = tk.StringVar()
         entry = ttk.Entry(dlg, textvariable=word_var, width=28)
-        entry.grid(row=0, column=1, padx=(0, 12), pady=(14, 4))
+        entry.grid(row=0, column=1, padx=(0, 14), pady=(16, 4))
         def on_ok(*_):
             w = word_var.get().strip().lower()
             if not w:
@@ -575,9 +777,9 @@ class KodaSettings(tk.Tk):
             result[0] = w
             dlg.destroy()
         btn_row = ttk.Frame(dlg)
-        btn_row.grid(row=1, column=0, columnspan=2, pady=(6, 0))
-        ttk.Button(btn_row, text="OK", command=on_ok).pack(side="left", padx=6)
-        ttk.Button(btn_row, text="Cancel", command=dlg.destroy).pack(side="left")
+        btn_row.grid(row=1, column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(btn_row, text="OK", style="Primary.TButton", command=on_ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", style="Secondary.TButton", command=dlg.destroy).pack(side="left")
         entry.focus_set()
         entry.bind("<Return>", on_ok)
         dlg.wait_window()
@@ -612,19 +814,19 @@ class KodaSettings(tk.Tk):
         """Add/Edit dialog. Returns (trigger, expansion) or None."""
         dlg = tk.Toplevel(self)
         dlg.title(title)
-        dlg.geometry("440x160")
+        dlg.geometry("460x170")
         dlg.resizable(False, False)
-        dlg.configure(bg="#1e1e2e")
+        self._register_dialog(dlg)
         dlg.grab_set()
         result = [None]
-        ttk.Label(dlg, text="Trigger phrase (say this alone):").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 4))
+        ttk.Label(dlg, text="Trigger phrase (say this alone)").grid(row=0, column=0, sticky="w", padx=14, pady=(16, 4))
         trig_var = tk.StringVar(value=trigger)
         trig_entry = ttk.Entry(dlg, textvariable=trig_var, width=30)
-        trig_entry.grid(row=0, column=1, padx=(0, 12), pady=(14, 4))
-        ttk.Label(dlg, text="Expansion (text to paste):").grid(row=1, column=0, sticky="w", padx=12, pady=4)
+        trig_entry.grid(row=0, column=1, padx=(0, 14), pady=(16, 4))
+        ttk.Label(dlg, text="Expansion (text to paste)").grid(row=1, column=0, sticky="w", padx=14, pady=4)
         exp_var = tk.StringVar(value=expansion)
         exp_entry = ttk.Entry(dlg, textvariable=exp_var, width=30)
-        exp_entry.grid(row=1, column=1, padx=(0, 12), pady=4)
+        exp_entry.grid(row=1, column=1, padx=(0, 14), pady=4)
         def on_ok(*_):
             t = trig_var.get().strip().lower()
             e = exp_var.get().strip()
@@ -634,9 +836,9 @@ class KodaSettings(tk.Tk):
             result[0] = (t, e)
             dlg.destroy()
         btn_row = ttk.Frame(dlg)
-        btn_row.grid(row=2, column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(btn_row, text="OK", command=on_ok).pack(side="left", padx=6)
-        ttk.Button(btn_row, text="Cancel", command=dlg.destroy).pack(side="left")
+        btn_row.grid(row=2, column=0, columnspan=2, pady=(12, 0))
+        ttk.Button(btn_row, text="OK", style="Primary.TButton", command=on_ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", style="Secondary.TButton", command=dlg.destroy).pack(side="left")
         trig_entry.focus_set()
         trig_entry.bind("<Return>", lambda e: exp_entry.focus_set())
         exp_entry.bind("<Return>", on_ok)
@@ -711,22 +913,22 @@ class KodaSettings(tk.Tk):
         """Show a small dialog for Add/Edit. Returns (misheard, correct) or None."""
         dlg = tk.Toplevel(self)
         dlg.title(title)
-        dlg.geometry("360x140")
+        dlg.geometry("380x150")
         dlg.resizable(False, False)
-        dlg.configure(bg="#1e1e2e")
+        self._register_dialog(dlg)
         dlg.grab_set()
 
         result = [None]
 
-        ttk.Label(dlg, text="Misheard word/phrase:").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 4))
+        ttk.Label(dlg, text="Misheard word/phrase").grid(row=0, column=0, sticky="w", padx=14, pady=(16, 4))
         mis_var = tk.StringVar(value=misheard)
         mis_entry = ttk.Entry(dlg, textvariable=mis_var, width=28)
-        mis_entry.grid(row=0, column=1, padx=(0, 12), pady=(14, 4))
+        mis_entry.grid(row=0, column=1, padx=(0, 14), pady=(16, 4))
 
-        ttk.Label(dlg, text="Replace with:").grid(row=1, column=0, sticky="w", padx=12, pady=4)
+        ttk.Label(dlg, text="Replace with").grid(row=1, column=0, sticky="w", padx=14, pady=4)
         cor_var = tk.StringVar(value=correct)
         cor_entry = ttk.Entry(dlg, textvariable=cor_var, width=28)
-        cor_entry.grid(row=1, column=1, padx=(0, 12), pady=4)
+        cor_entry.grid(row=1, column=1, padx=(0, 14), pady=4)
 
         def on_ok(*_):
             m = mis_var.get().strip().lower()
@@ -738,9 +940,9 @@ class KodaSettings(tk.Tk):
             dlg.destroy()
 
         btn_row = ttk.Frame(dlg)
-        btn_row.grid(row=2, column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(btn_row, text="OK", command=on_ok).pack(side="left", padx=6)
-        ttk.Button(btn_row, text="Cancel", command=dlg.destroy).pack(side="left")
+        btn_row.grid(row=2, column=0, columnspan=2, pady=(12, 0))
+        ttk.Button(btn_row, text="OK", style="Primary.TButton", command=on_ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", style="Secondary.TButton", command=dlg.destroy).pack(side="left")
 
         mis_entry.focus_set()
         cor_entry.bind("<Return>", on_ok)
@@ -822,22 +1024,25 @@ class KodaSettings(tk.Tk):
             messagebox.showerror("Koda", "History module not found.")
             return
 
+        t = self._palette()
         hist_win = tk.Toplevel(self)
         hist_win.title("Koda - Transcript History")
-        hist_win.geometry("600x450")
-        hist_win.configure(bg="#1e1e2e")
+        hist_win.geometry("620x460")
+        self._register_dialog(hist_win)
 
         top_frame = ttk.Frame(hist_win)
-        top_frame.pack(fill="x", padx=10, pady=(10, 5))
+        top_frame.pack(fill="x", padx=12, pady=(12, 6))
 
-        ttk.Label(top_frame, text="Search:").pack(side="left", padx=(0, 5))
+        ttk.Label(top_frame, text="Search").pack(side="left", padx=(0, 8))
         search_var = tk.StringVar()
         search_entry = ttk.Entry(top_frame, textvariable=search_var, width=40)
-        search_entry.pack(side="left", padx=(0, 5))
+        search_entry.pack(side="left", padx=(0, 6))
 
-        text_widget = tk.Text(hist_win, bg="#313244", fg="#cdd6f4", font=("Consolas", 10),
-                              wrap="word", state="disabled")
-        text_widget.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        text_widget = tk.Text(hist_win, bg=t["content"], fg=t["text"],
+                              insertbackground=t["text"], selectbackground=t["accent"],
+                              selectforeground=t["accent_fg"], relief="flat",
+                              font=("Consolas", 10), wrap="word", state="disabled")
+        text_widget.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
         def refresh(query=None):
             if query:
