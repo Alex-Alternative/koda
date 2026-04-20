@@ -37,6 +37,29 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ICO_PATH = os.path.join(SCRIPT_DIR, "koda.ico")
 
 
+# Settings whose changes only take effect after Koda is relaunched.
+# Theme and most UI toggles apply live — these don't (hotkey_service needs
+# re-registration, Whisper model needs reload, audio stream needs re-open).
+RESTART_REQUIRED_KEYS = (
+    "model_size",
+    "compute_type",
+    "hotkey_dictation",
+    "hotkey_command",
+    "hotkey_prompt",
+    "hotkey_correction",
+    "hotkey_readback",
+    "hotkey_readback_selected",
+    "hotkey_mode",
+    "mic_device",
+    "streaming",
+)
+
+
+def _restart_required_changes(before, after):
+    """Return the subset of RESTART_REQUIRED_KEYS whose values differ."""
+    return [k for k in RESTART_REQUIRED_KEYS if before.get(k) != after.get(k)]
+
+
 def _detect_system_theme():
     """Read Windows apps-theme preference. Returns 'light' or 'dark'.
 
@@ -396,7 +419,7 @@ class KodaSettings(tk.Tk):
         # Bottom action bar — packed first so tall tabs can't push it off-screen.
         btn_frame = ttk.Frame(self, style="Chrome.TFrame")
         btn_frame.pack(side="bottom", fill="x", padx=16, pady=(8, 14))
-        save_btn = RoundedButton(btn_frame, "Save", self.save_and_restart,
+        save_btn = RoundedButton(btn_frame, "Save", self.save_and_close,
                                  primary=True, palette=self._palette())
         save_btn.pack(side="right")
         cancel_btn = RoundedButton(btn_frame, "Cancel", self.on_close,
@@ -731,19 +754,16 @@ class KodaSettings(tk.Tk):
         self._save_profiles_data()
         self._save_filler_words_data()
 
-    def save_and_restart(self):
+    def save_and_close(self):
+        before = {k: self.config_data.get(k) for k in RESTART_REQUIRED_KEYS}
         self.save()
-        import subprocess
-        import time
-        # Kill only the parent Koda process by PID — not all pythonw processes,
-        # since settings_gui itself runs as pythonw and would be self-killed.
-        parent_pid = os.getppid()
-        subprocess.run(["taskkill", "/f", "/pid", str(parent_pid)], capture_output=True)
-        time.sleep(0.5)
-        # Restart — launch pythonw directly (bypasses start.bat activation quirks)
-        pythonw = os.path.join(SCRIPT_DIR, "venv", "Scripts", "pythonw.exe")
-        subprocess.Popen([pythonw, "voice.py"], cwd=SCRIPT_DIR,
-                         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+        changed = _restart_required_changes(before, self.config_data)
+        if changed:
+            messagebox.showinfo(
+                "Restart Koda to apply changes",
+                "These settings take effect after you quit Koda from the tray and relaunch:\n\n"
+                + "\n".join(f"  \u2022 {k}" for k in changed),
+            )
         self.destroy()
 
     def _open_custom_words(self):

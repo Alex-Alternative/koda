@@ -2218,5 +2218,54 @@ class TestTerminalNormalize(unittest.TestCase):
         self.assertIn(".txt", result)
 
 
+# ============================================================
+# Settings save behavior — no more process-killing restart
+# Reason: save_and_restart hard-killed Koda with taskkill on every Save click
+# and relaunched it, which (a) left the user staring at a dead tray when the
+# relaunch path was wrong for the frozen exe, and (b) dumped stale _MEI temp
+# dirs every cycle. Replaced with save_and_close + a focused dialog when
+# settings that actually require a relaunch (hotkeys, model) are changed.
+# ============================================================
+
+
+class TestRestartRequiredChanges(unittest.TestCase):
+    def setUp(self):
+        import settings_gui
+        self.settings_gui = settings_gui
+
+    def test_returns_empty_when_no_tracked_keys_changed(self):
+        before = {"model_size": "small", "hotkey_dictation": "ctrl+space"}
+        after = {"model_size": "small", "hotkey_dictation": "ctrl+space", "ui_theme": "dark"}
+        self.assertEqual(self.settings_gui._restart_required_changes(before, after), [])
+
+    def test_flags_hotkey_change(self):
+        before = {"hotkey_dictation": "ctrl+space"}
+        after = {"hotkey_dictation": "ctrl+alt+d"}
+        self.assertEqual(
+            self.settings_gui._restart_required_changes(before, after),
+            ["hotkey_dictation"],
+        )
+
+    def test_flags_model_size_change(self):
+        before = {"model_size": "small"}
+        after = {"model_size": "base"}
+        self.assertEqual(
+            self.settings_gui._restart_required_changes(before, after),
+            ["model_size"],
+        )
+
+    def test_ignores_non_restart_keys_like_theme(self):
+        before = {"ui_theme": "light", "notifications": False}
+        after = {"ui_theme": "dark", "notifications": True}
+        self.assertEqual(self.settings_gui._restart_required_changes(before, after), [])
+
+    def test_preserves_declared_key_order(self):
+        # model_size comes first in RESTART_REQUIRED_KEYS
+        before = {"hotkey_dictation": "a", "model_size": "small"}
+        after = {"hotkey_dictation": "b", "model_size": "base"}
+        result = self.settings_gui._restart_required_changes(before, after)
+        self.assertEqual(result, ["model_size", "hotkey_dictation"])
+
+
 if __name__ == "__main__":
     unittest.main()
