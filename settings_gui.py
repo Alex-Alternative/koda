@@ -15,6 +15,20 @@ from config import CONFIG_PATH, CUSTOM_WORDS_PATH, DEFAULT_CUSTOM_WORDS, load_co
 
 logger = logging.getLogger("koda")
 
+# Windows DPI awareness. Without this, PyInstaller-frozen tkinter apps render
+# at legacy 96 DPI and Windows bitmap-upscales them — producing a tiny blurry
+# window on any display scaled above 100%. Must be set before Tk() is created.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        # 2 = PROCESS_PER_MONITOR_DPI_AWARE (preferred); fall back to 1 on older Windows.
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 # Directory containing this file — used for in-source (non-frozen) subprocess
 # launch of voice.py. Intentionally NOT derived from config.CONFIG_DIR because
 # in a frozen exe, CONFIG_DIR points at %APPDATA%\Koda while voice.py lives
@@ -73,6 +87,110 @@ THEMES = {
 }
 
 
+class RoundedButton(tk.Canvas):
+    """Canvas-drawn button with truly rounded corners.
+
+    ttk.Button (clam theme) draws a flat rectangle with no corner-radius
+    control, so we bypass ttk for the two hero actions (Save / Cancel) and
+    paint a PIL-rendered rounded rectangle with text on top. Re-themes live
+    via re_theme(palette).
+    """
+
+    def __init__(self, parent, text, command, *, primary, palette,
+                 width=112, height=36, radius=8, font=("Segoe UI", 10, "bold")):
+        super().__init__(parent, width=width, height=height,
+                         bg=palette["window"], highlightthickness=0, bd=0)
+        self._text = text
+        self._cmd = command
+        self._primary = primary
+        self._palette = palette
+        # Note: self._w is used by tkinter internally as the widget path name,
+        # so use _btn_w / _btn_h / _btn_r for our geometry.
+        self._btn_w, self._btn_h, self._btn_r = width, height, radius
+        self._font = font
+        self._hover = False
+        self._bg_img = None  # must retain reference or PhotoImage gets GC'd
+        self._redraw()
+        self.bind("<Button-1>", lambda e: self._cmd() if self._cmd else None)
+        self.bind("<Enter>", lambda e: self._set_hover(True))
+        self.bind("<Leave>", lambda e: self._set_hover(False))
+
+    def _set_hover(self, on):
+        self._hover = on
+        self._redraw()
+
+    def _redraw(self):
+        from PIL import Image, ImageDraw, ImageTk
+        p = self._palette
+        if self._primary:
+            fill = p["accent_hv"] if self._hover else p["accent"]
+            text_fg = p["accent_fg"]
+            outline = fill
+        else:
+            fill = p["hover"] if self._hover else p["window"]
+            text_fg = p["text"]
+            outline = p["border"]
+        # Supersample for anti-aliased edges.
+        scale = 3
+        W, H, R = self._btn_w * scale, self._btn_h * scale, self._btn_r * scale
+        img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle([0, 0, W - 1, H - 1], radius=R,
+                               fill=fill, outline=outline, width=scale)
+        img = img.resize((self._btn_w, self._btn_h), Image.LANCZOS)
+        self._bg_img = ImageTk.PhotoImage(img)
+        self.delete("all")
+        self.configure(bg=p["window"])
+        self.create_image(0, 0, image=self._bg_img, anchor="nw")
+        self.create_text(self._btn_w // 2, self._btn_h // 2, text=self._text,
+                         fill=text_fg, font=self._font)
+
+    def re_theme(self, palette):
+        self._palette = palette
+        self._redraw()
+
+
+def _make_scrollable(parent, palette):
+    """Wrap a tab frame with a vertical-scrolling canvas. Returns the inner
+    frame callers should pack their widgets into."""
+    container = ttk.Frame(parent, style="Content.TFrame")
+    container.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(container, highlightthickness=0, bd=0,
+                       bg=palette["content"])
+    vsb = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vsb.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    vsb.pack(side="right", fill="y")
+
+    inner = ttk.Frame(canvas, padding=20)
+    inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    def _on_inner_configure(_event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def _on_canvas_configure(event):
+        canvas.itemconfigure(inner_id, width=event.width)
+
+    inner.bind("<Configure>", _on_inner_configure)
+    canvas.bind("<Configure>", _on_canvas_configure)
+
+    # Mousewheel only while the pointer is over this canvas — otherwise
+    # every tab's canvas would fight for wheel events.
+    def _on_wheel(event):
+        canvas.yview_scroll(int(-event.delta / 120), "units")
+
+    def _bind_wheel(_e):
+        canvas.bind_all("<MouseWheel>", _on_wheel)
+
+    def _unbind_wheel(_e):
+        canvas.unbind_all("<MouseWheel>")
+
+    canvas.bind("<Enter>", _bind_wheel)
+    canvas.bind("<Leave>", _unbind_wheel)
+    return inner, canvas
+
+
 class KodaSettings(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -88,8 +206,11 @@ class KodaSettings(tk.Tk):
         self._filler_words = self._load_filler_words_data()
         self._snippets = dict(self.config_data.get("snippets", {}))
 
-        # Track dialog toplevels so theme toggle can restyle them too.
+        # Track dialog toplevels + rounded buttons + scroll canvases so the
+        # theme toggle can restyle all of them on switch.
         self._open_dialogs = []
+        self._rounded_buttons = []
+        self._scroll_canvases = []
 
         self._style = ttk.Style()
         self._style.theme_use("clam")
@@ -100,13 +221,15 @@ class KodaSettings(tk.Tk):
         except tk.TclError:
             pass
 
-        self._build_ui()
+        # Apply theme BEFORE building UI — RoundedButton and _make_scrollable
+        # read the palette at construction time.
         self._apply_theme(self._theme_name)
+        self._build_ui()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.update_idletasks()
-        self.geometry("560x560")
-        self.minsize(500, 460)
+        self.geometry("680x640")
+        self.minsize(620, 540)
 
     # ---------- Theme plumbing ----------
 
@@ -191,12 +314,24 @@ class KodaSettings(tk.Tk):
         s.configure("TNotebook.Tab",
                     background=t["window"], foreground=t["text_dim"],
                     bordercolor=t["border"], lightcolor=t["window"], darkcolor=t["window"],
-                    padding=(18, 10), font=("Segoe UI", 10))
+                    padding=(12, 8), font=("Segoe UI", 10))
         s.map("TNotebook.Tab",
               background=[("selected", t["content"]), ("active", t["hover"])],
               foreground=[("selected", t["text"]), ("active", t["text"])],
               lightcolor=[("selected", t["content"])],
               darkcolor=[("selected", t["content"])])
+        # Nested notebook (inside Words tab) uses tighter tabs since it lives
+        # inside the already-padded outer tab content.
+        s.configure("Sub.TNotebook", background=t["content"], borderwidth=0, tabmargins=(0, 4, 0, 0))
+        s.configure("Sub.TNotebook.Tab",
+                    background=t["content"], foreground=t["text_dim"],
+                    bordercolor=t["border"], lightcolor=t["content"], darkcolor=t["content"],
+                    padding=(10, 6), font=("Segoe UI", 9))
+        s.map("Sub.TNotebook.Tab",
+              background=[("selected", t["window"]), ("active", t["hover"])],
+              foreground=[("selected", t["text"]), ("active", t["text"])],
+              lightcolor=[("selected", t["window"])],
+              darkcolor=[("selected", t["window"])])
 
         s.configure("Treeview",
                     background=t["content"], foreground=t["text"],
@@ -226,6 +361,20 @@ class KodaSettings(tk.Tk):
         if hasattr(self, "_theme_btn"):
             self._theme_btn.configure(text=self._theme_toggle_label())
 
+        # Repaint canvas-based rounded buttons.
+        for btn in getattr(self, "_rounded_buttons", []):
+            try:
+                btn.re_theme(t)
+            except tk.TclError:
+                pass
+
+        # Update scroll canvas backgrounds.
+        for canvas in getattr(self, "_scroll_canvases", []):
+            try:
+                canvas.configure(bg=t["content"])
+            except tk.TclError:
+                pass
+
     def _theme_toggle_label(self):
         return "\u2600 Light" if self._theme_name == "dark" else "\U0001F319 Dark"
 
@@ -247,10 +396,13 @@ class KodaSettings(tk.Tk):
         # Bottom action bar — packed first so tall tabs can't push it off-screen.
         btn_frame = ttk.Frame(self, style="Chrome.TFrame")
         btn_frame.pack(side="bottom", fill="x", padx=16, pady=(8, 14))
-        ttk.Button(btn_frame, text="Save", style="Primary.TButton",
-                   command=self.save_and_restart).pack(side="right")
-        ttk.Button(btn_frame, text="Cancel", style="Secondary.TButton",
-                   command=self.on_close).pack(side="right", padx=(0, 8))
+        save_btn = RoundedButton(btn_frame, "Save", self.save_and_restart,
+                                 primary=True, palette=self._palette())
+        save_btn.pack(side="right")
+        cancel_btn = RoundedButton(btn_frame, "Cancel", self.on_close,
+                                   primary=False, palette=self._palette())
+        cancel_btn.pack(side="right", padx=(0, 10))
+        self._rounded_buttons.extend([save_btn, cancel_btn])
 
         sep = ttk.Separator(self, orient="horizontal")
         sep.pack(side="bottom", fill="x", padx=16)
@@ -258,11 +410,14 @@ class KodaSettings(tk.Tk):
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=16, pady=(14, 0))
 
-        gen_tab = ttk.Frame(notebook, padding=20)
+        # Only wrap the long tabs (General, Advanced) in a scroll canvas.
+        # Hotkeys, Speech, and Words fit on-screen and a scroll wrapper would
+        # leave blank space + a pointless scrollbar.
+        gen_tab = ttk.Frame(notebook)
         hk_tab  = ttk.Frame(notebook, padding=20)
         sp_tab  = ttk.Frame(notebook, padding=20)
         wd_tab  = ttk.Frame(notebook, padding=20)
-        adv_tab = ttk.Frame(notebook, padding=20)
+        adv_tab = ttk.Frame(notebook)
 
         notebook.add(gen_tab,  text="  General  ")
         notebook.add(hk_tab,   text="  Hotkeys  ")
@@ -270,11 +425,15 @@ class KodaSettings(tk.Tk):
         notebook.add(wd_tab,   text="  Words  ")
         notebook.add(adv_tab,  text="  Advanced  ")
 
-        self._build_general_tab(gen_tab)
+        gen_inner, gen_canvas = _make_scrollable(gen_tab, self._palette())
+        adv_inner, adv_canvas = _make_scrollable(adv_tab, self._palette())
+        self._scroll_canvases.extend([gen_canvas, adv_canvas])
+
+        self._build_general_tab(gen_inner)
         self._build_hotkeys_tab(hk_tab)
         self._build_speech_tab(sp_tab)
         self._build_words_tab(wd_tab)
-        self._build_advanced_tab(adv_tab)
+        self._build_advanced_tab(adv_inner)
 
     def _section_header(self, parent, text, first=False):
         ttk.Label(parent, text=text, style="Header.TLabel").pack(
@@ -366,24 +525,24 @@ class KodaSettings(tk.Tk):
                   style="Dim.TLabel").pack(anchor="w", pady=(14, 0))
 
     def _build_words_tab(self, parent):
-        sub = ttk.Notebook(parent)
+        sub = ttk.Notebook(parent, style="Sub.TNotebook")
         sub.pack(fill="both", expand=True)
 
-        cw_tab = ttk.Frame(sub, padding=14)
-        fw_tab = ttk.Frame(sub, padding=14)
-        sn_tab = ttk.Frame(sub, padding=14)
-        pr_tab = ttk.Frame(sub, padding=14)
+        cw_tab = ttk.Frame(sub, padding=10)
+        fw_tab = ttk.Frame(sub, padding=10)
+        sn_tab = ttk.Frame(sub, padding=10)
+        pr_tab = ttk.Frame(sub, padding=10)
 
-        sub.add(cw_tab, text="  Custom Words  ")
-        sub.add(fw_tab, text="  Filler Words  ")
-        sub.add(sn_tab, text="  Snippets  ")
-        sub.add(pr_tab, text="  App Profiles  ")
+        sub.add(cw_tab, text="Custom")
+        sub.add(fw_tab, text="Fillers")
+        sub.add(sn_tab, text="Snippets")
+        sub.add(pr_tab, text="Profiles")
 
         # Custom Words
         ttk.Label(cw_tab, text="Replace misheard words with the correct version:",
                   style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         tf = ttk.Frame(cw_tab); tf.pack(fill="both", expand=True)
-        self._vocab_tree = ttk.Treeview(tf, columns=("misheard","correct"), show="headings", height=8, selectmode="browse")
+        self._vocab_tree = ttk.Treeview(tf, columns=("misheard","correct"), show="headings", height=6, selectmode="browse")
         self._vocab_tree.heading("misheard", text="Misheard"); self._vocab_tree.heading("correct", text="Replace with")
         self._vocab_tree.column("misheard", width=140, minwidth=80, anchor="w", stretch=True)
         self._vocab_tree.column("correct",  width=180, minwidth=100, anchor="w", stretch=True)
@@ -391,16 +550,23 @@ class KodaSettings(tk.Tk):
         s = ttk.Scrollbar(tf, orient="vertical", command=self._vocab_tree.yview)
         self._vocab_tree.configure(yscrollcommand=s.set); s.pack(side="left", fill="y")
         self._refresh_vocab_tree()
-        br = ttk.Frame(cw_tab); br.pack(anchor="w", pady=(10, 0))
-        for lbl, cmd in [("Add", self._add_vocab_entry), ("Edit", self._edit_vocab_entry),
-                         ("Remove", self._remove_vocab_entry), ("Import", self._import_vocab), ("Export", self._export_vocab)]:
-            ttk.Button(br, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
+        # Two rows: CRUD on top, I/O on bottom. Always fits regardless of
+        # window width / DPI scaling.
+        br1 = ttk.Frame(cw_tab); br1.pack(anchor="w", pady=(10, 0))
+        for lbl, cmd in [("Add", self._add_vocab_entry),
+                         ("Edit", self._edit_vocab_entry),
+                         ("Remove", self._remove_vocab_entry)]:
+            ttk.Button(br1, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
+        br2 = ttk.Frame(cw_tab); br2.pack(anchor="w", pady=(6, 0))
+        for lbl, cmd in [("Import", self._import_vocab),
+                         ("Export", self._export_vocab)]:
+            ttk.Button(br2, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
         # Filler Words
         ttk.Label(fw_tab, text="Removed from speech when filler removal is enabled:",
                   style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         ff = ttk.Frame(fw_tab); ff.pack(fill="both", expand=True)
-        self._filler_tree = ttk.Treeview(ff, columns=("word",), show="headings", height=8, selectmode="browse")
+        self._filler_tree = ttk.Treeview(ff, columns=("word",), show="headings", height=6, selectmode="browse")
         self._filler_tree.heading("word", text="Word / Phrase")
         self._filler_tree.column("word", width=320, minwidth=160, anchor="w", stretch=True)
         self._filler_tree.pack(side="left", fill="both", expand=True)
@@ -415,7 +581,7 @@ class KodaSettings(tk.Tk):
         ttk.Label(sn_tab, text="Say the trigger word alone to paste the full expansion:",
                   style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         sf = ttk.Frame(sn_tab); sf.pack(fill="both", expand=True)
-        self._snippets_tree = ttk.Treeview(sf, columns=("trigger","expansion"), show="headings", height=8, selectmode="browse")
+        self._snippets_tree = ttk.Treeview(sf, columns=("trigger","expansion"), show="headings", height=6, selectmode="browse")
         self._snippets_tree.heading("trigger", text="Trigger"); self._snippets_tree.heading("expansion", text="Expansion")
         self._snippets_tree.column("trigger",   width=110, minwidth=70,  anchor="w", stretch=False)
         self._snippets_tree.column("expansion", width=220, minwidth=120, anchor="w", stretch=True)
@@ -431,7 +597,7 @@ class KodaSettings(tk.Tk):
         ttk.Label(pr_tab, text="Auto-switch settings based on the active window:",
                   style="Dim.TLabel").pack(anchor="w", pady=(0, 8))
         pf = ttk.Frame(pr_tab); pf.pack(fill="both", expand=True)
-        self._profile_tree = ttk.Treeview(pf, columns=("name","match","overrides"), show="headings", height=8, selectmode="browse")
+        self._profile_tree = ttk.Treeview(pf, columns=("name","match","overrides"), show="headings", height=6, selectmode="browse")
         self._profile_tree.heading("name", text="Profile"); self._profile_tree.heading("match", text="Matches"); self._profile_tree.heading("overrides", text="Overrides")
         self._profile_tree.column("name",      width=90,  minwidth=70,  anchor="w", stretch=False)
         self._profile_tree.column("match",     width=130, minwidth=100, anchor="w", stretch=True)

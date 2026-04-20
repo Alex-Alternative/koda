@@ -25,6 +25,18 @@ import pyautogui
 import pystray
 from PIL import Image, ImageDraw
 
+# Windows DPI awareness. Without this, frozen tkinter apps render at legacy
+# 96 DPI and Windows bitmap-upscales them — producing tiny blurry windows on
+# any display scaled above 100%. Must be set before any Tk window is created.
+if sys.platform == "win32":
+    try:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # per-monitor DPI
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 from config import CONFIG_DIR, load_config, save_config
 from text_processing import process_text, apply_custom_vocabulary
 from history import init_db, save_transcription
