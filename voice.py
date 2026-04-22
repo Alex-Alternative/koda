@@ -47,18 +47,7 @@ _PRIORITY_CLASSES = {
 
 
 def set_process_priority(level):
-    """Raise the current process's Windows scheduling priority class.
-
-    Under system load (many Node/Electron sessions, background builds, etc.)
-    the default NORMAL_PRIORITY_CLASS causes Koda to round-robin with every
-    other CPU-hungry process — Whisper transcription stalls for tens of
-    seconds. ABOVE_NORMAL lets Windows preempt other normal-priority processes
-    when Koda has work without starving the rest of the desktop. HIGH is more
-    aggressive; never use REALTIME.
-
-    No-op on non-Windows platforms. Unknown levels log a warning and fall
-    through to NORMAL so the app still starts cleanly.
-    """
+    """Raise Windows scheduling priority class; no-op on non-Windows or unknown level."""
     if sys.platform != "win32":
         return
     flag = _PRIORITY_CLASSES.get(level)
@@ -979,10 +968,7 @@ def _transcribe_and_paste():
         play_error_sound()
     finally:
         total = time.perf_counter() - stage_start
-        # Always log per-stage timings at DEBUG — debug.log gives a clear breakdown
-        # when someone reports "tray stayed yellow forever". Under CPU contention
-        # the whisper stage dominates; that's the signal to raise process_priority
-        # or lower cpu_threads.
+        # Whisper stage dominating = CPU contention → tune process_priority / cpu_threads.
         logger.debug("Transcribe timings (s): total=%.2f %s",
                      total,
                      " ".join(f"{k}={v:.2f}" for k, v in timings.items()))
