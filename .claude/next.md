@@ -2,8 +2,8 @@
 
 - [x] Merge open PRs: #24 (session 41 handover), #26 (perf), #27 (session 42 handover), #28 (app-launch MVP), #29 (pre-push gate rule), #30 (session 43 handover), #31 (session 43 addendum)
 - [ ] Runtime-test `feat/voice-app-launch` (PR #28): golden path ("open word"), prefix invariant ("please open word" must NOT fire), error fallback ("open gibberish")
-- [ ] Prompt-assist v2 — conversational Q&A: press `ctrl+f9` → Koda opens with a chosen voice ("what are we building with AI today?") → short Q&A (intent, stakes, format) → assembled prompt pastes to active window. Today it's silent/one-shot. Needs: opening-question TTS, multi-turn capture loop, follow-up question ruleset in `prompt_assist.py`, exit condition ("done" / timeout). Market research + design doc pending (agent dispatched 2026-04-23, results feed `docs/prompt-assist-v2-design.md`).
-- [ ] Voice picker in `configure.py` first-run wizard — enumerate SAPI voices via `voice.get_available_voices()`, play a sample line ("Hi, I'm Koda") per voice, user picks 1/2/3, save to `config["tts"]["voice"]`. Add after the hotkey setup step around `configure.py:625`. Pairs with prompt-assist v2 above — both need a chosen voice.
+- [ ] Prompt-assist v2 MVP — conversational Q&A + confirmation + platform detection + install-wizard LLM picker. Full design at `C:\Users\alex\Projects\koda\docs\prompt-assist-v2-design.md`. All 6 open questions resolved. Build on `feat/prompt-assist-v2`. Est. ~3.5 sessions. Paired: voice picker + LLM refinement picker in `configure.py`.
+- [ ] Phase 16 licensing — now blocking prompt-assist v2 paywall wrap. Beta testers must be grandfathered into free tier 2. Need: tier structure, subscription vs one-time, offline activation, durable "beta tester" marker (signed config / first-N installs / timestamp-based).
 - [ ] Decide signing approach (Azure Trusted Signing $10/mo recommended) and wire into `.github/workflows/build-release.yml`
 - [ ] Pick direction for Whisper "dash" dropout fix — read `project_dash_word_dropout.md` memory before proposing
 - [ ] Home-PC smoke test of public v4.3.1 installer (carried from session 41)
