@@ -1,12 +1,16 @@
 # NEXT:
 
-- [ ] Merge PR #33 (prompt-assist v2 design doc) once Alex reviews — `https://github.com/Moonhawk80/koda/pull/33`
+- [x] Merge PR #33 (prompt-assist v2 design doc) once Alex reviews — `https://github.com/Moonhawk80/koda/pull/33`
 - [ ] Runtime-test `feat/voice-app-launch` (PR #28): golden path ("open word"), prefix invariant ("please open word" must NOT fire), error fallback ("open gibberish"). Do FIRST — validates the shared voice.py hot path before v2 builds on it.
-- [ ] **Prompt-assist v2 MVP** — build on `feat/prompt-assist-v2`. Full design: `C:\Users\alex\Projects\koda\docs\prompt-assist-v2-design.md`. Scope: state machine, 3 slots + confirmation, platform detection, install-wizard LLM picker (None / Ollama / BYO API), Credential Manager for secrets, voice picker, overlay preview mode, settings GUI dropdowns, unit tests across all three backends. Est. ~3.5 sessions.
+- [x] **Prompt-assist v2 MVP** — built on `feat/prompt-assist-v2` (commit ffc400b, pushed origin, 421 tests). Pre-push gate ran clean (forge-deslop H1 + forge-review N1 closed). Live mic test deferred to next session.
+- [ ] **Live mic test of `feat/prompt-assist-v2`** — kill installed v4.3.1, run from source via start.bat, press Ctrl+F9 in any AI app: validate TTS opener, 3-slot Q&A, overlay preview (Send/Refine/Add/Cancel + Escape), paste into original window. Smoke + edge cases (cancel mid-flow, short-circuit on long answer, confirmation 15s timeout). DO FIRST next session.
+- [ ] **Fix statusline-command.sh** to render `.claude/next.md` first uncompleted `- [ ]` item — currently only shows model + context bar. Read `workspace.current_dir` from input JSON, find `.claude/next.md`, append first NEXT item truncated.
+- [ ] Voice-driven confirmation at CONFIRMING state (deferred from Step 4) — listen for "send/refine/add/explain" as alternative to overlay buttons. `classify_confirm_response()` already handles routing.
+- [ ] Re-add cancel-via-hotkey-repress for prompt-assist v2 — `cancel_slot_record` API was removed by forge-deslop tonight (no producer); add cleanly when prompt_press-during-active-conversation needs to cancel.
 - [ ] Phase 16 licensing — blocks prompt-assist v2 paywall wrap (not the build itself). Decisions needed: tier count, subscription vs one-time, offline activation, durable "beta tester" marker (signed config / first-N installs / timestamp). Beta testers grandfather into free tier 2.
 - [ ] Decide signing approach (Azure Trusted Signing $10/mo recommended) and wire into `.github/workflows/build-release.yml`
 - [ ] Pick direction for Whisper "dash" dropout fix — read `project_dash_word_dropout.md` memory before proposing
-- [ ] Home-PC smoke test of public v4.3.1 installer (carried from session 41)
+- [x] Home-PC smoke test of public v4.3.1 installer (carried from session 41) — installed fresh from KodaSetup-4.3.1.exe tonight, 3 processes running confirmed.
 - [ ] Wake word decision: train custom "hey koda" via openwakeword OR rip feature (currently detects "Alexa" behind the label)
 - [ ] Phase 9 RDP test (pending since session 35)
 - [ ] V2 app-launch: chaining ("open powershell and type git status"), window-ready check, "switch to X" for existing windows
