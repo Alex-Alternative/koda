@@ -13,7 +13,8 @@ import ctypes.wintypes
 import logging
 import os
 import tkinter as tk
-from PIL import ImageTk
+import tkinter.font as tkfont
+from PIL import Image, ImageDraw, ImageTk
 import threading
 
 logger = logging.getLogger("koda")
@@ -211,6 +212,22 @@ def _lighten(hex_color, amount=0.15):
         return hex_color
 
 
+def _hex_rgba(hex_color, alpha=255):
+    """Convert '#rrggbb' (or '#rgb') to (r, g, b, a) for PIL fills."""
+    h = hex_color.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha)
+
+
+def _rounded_rect_image(width, height, radius, fill_rgba):
+    """PIL RGBA image of a filled rounded rectangle, anti-aliased corners."""
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=radius, fill=fill_rgba)
+    return img
+
+
 def show_prompt_preview(text, callbacks):
     """Open a topmost preview window showing the assembled prompt + 4 actions.
 
@@ -375,41 +392,67 @@ def show_prompt_preview(text, callbacks):
 
         # =============== BUTTON FACTORIES ===============
         # Three hierarchies — text (ghost), elevated (secondary prominent),
-        # primary (solid CTA). No 1px borders anywhere; differentiation
-        # comes from weight + background contrast, not chrome.
+        # primary (solid CTA). All use PIL-rendered rounded-rect background
+        # images for true rounded corners (tk widgets don't natively support
+        # border-radius). Differentiation by weight + bg contrast.
+        _font_primary = tkfont.Font(family="Segoe UI Semibold", size=11)
+        _font_secondary = tkfont.Font(family="Segoe UI Semibold", size=10)
+        _btn_image_refs = []  # hold PhotoImage refs so they aren't GC'd while window is alive
+
+        def _btn_images(w, h, radius, normal_hex, hover_hex):
+            """Return (normal_photo, hover_photo). normal_hex=None → fully transparent normal state."""
+            if normal_hex is None:
+                normal_img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            else:
+                normal_img = _rounded_rect_image(w, h, radius, _hex_rgba(normal_hex))
+            hover_img = _rounded_rect_image(w, h, radius, _hex_rgba(hover_hex))
+            n_photo = ImageTk.PhotoImage(normal_img)
+            h_photo = ImageTk.PhotoImage(hover_img)
+            _btn_image_refs.extend([n_photo, h_photo])
+            return n_photo, h_photo
+
+        def _measure(font, label, padx, pady):
+            return font.measure(label) + 2 * padx, font.metrics("linespace") + 2 * pady
+
+        BTN_RADIUS = 8
+
         def _make_text_btn(parent, label, color, action):
+            w, h = _measure(_font_secondary, label, padx=14, pady=9)
+            n_photo, h_photo = _btn_images(w, h, BTN_RADIUS, None, BG_ELEVATED)
             btn = tk.Label(
-                parent, text=label, bg=BG_BASE, fg=color,
-                font=("Segoe UI Semibold", 10),
-                padx=14, pady=11, cursor="hand2",
+                parent, image=n_photo, text=label, compound="center",
+                bg=BG_BASE, fg=color, font=_font_secondary,
+                bd=0, highlightthickness=0, cursor="hand2",
             )
             btn.bind("<Button-1>", lambda e: action())
-            btn.bind("<Enter>", lambda e: btn.configure(fg=_lighten(color, 0.3)))
-            btn.bind("<Leave>", lambda e: btn.configure(fg=color))
+            btn.bind("<Enter>", lambda e: btn.configure(image=h_photo, fg=_lighten(color, 0.2)))
+            btn.bind("<Leave>", lambda e: btn.configure(image=n_photo, fg=color))
             return btn
 
         def _make_elevated_btn(parent, label, color, action):
+            w, h = _measure(_font_secondary, label, padx=20, pady=10)
+            n_photo, h_photo = _btn_images(w, h, BTN_RADIUS, BG_ELEVATED, _lighten(BG_ELEVATED, 0.35))
             btn = tk.Label(
-                parent, text=label, bg=BG_ELEVATED, fg=color,
-                font=("Segoe UI Semibold", 10),
-                padx=20, pady=11, cursor="hand2",
+                parent, image=n_photo, text=label, compound="center",
+                bg=BG_BASE, fg=color, font=_font_secondary,
+                bd=0, highlightthickness=0, cursor="hand2",
             )
-            hover_bg = _lighten(BG_ELEVATED, 0.35)
             btn.bind("<Button-1>", lambda e: action())
-            btn.bind("<Enter>", lambda e: btn.configure(bg=hover_bg))
-            btn.bind("<Leave>", lambda e: btn.configure(bg=BG_ELEVATED))
+            btn.bind("<Enter>", lambda e: btn.configure(image=h_photo))
+            btn.bind("<Leave>", lambda e: btn.configure(image=n_photo))
             return btn
 
         def _make_primary_btn(parent, label, action):
+            w, h = _measure(_font_primary, label, padx=26, pady=11)
+            n_photo, h_photo = _btn_images(w, h, BTN_RADIUS, BRAND, _lighten(BRAND, 0.12))
             btn = tk.Label(
-                parent, text=label, bg=BRAND, fg="#0a0c0f",
-                font=("Segoe UI Semibold", 11),
-                padx=26, pady=12, cursor="hand2",
+                parent, image=n_photo, text=label, compound="center",
+                bg=BG_BASE, fg="#0a0c0f", font=_font_primary,
+                bd=0, highlightthickness=0, cursor="hand2",
             )
-            hover_bg = _lighten(BRAND, 0.12)
             btn.bind("<Button-1>", lambda e: action())
-            btn.bind("<Enter>", lambda e: btn.configure(bg=hover_bg))
-            btn.bind("<Leave>", lambda e: btn.configure(bg=BRAND))
+            btn.bind("<Enter>", lambda e: btn.configure(image=h_photo))
+            btn.bind("<Leave>", lambda e: btn.configure(image=n_photo))
             return btn
 
         # =============== ADD-INLINE ===============
