@@ -7,6 +7,10 @@
 - [ ] **PR 2 — `feat/piper-tts` — Piper direct subprocess, Amy (en_US-amy-medium) as stock voice.** Bundle piper.exe + voice in installer (~80MB bloat). New `piper_tts.py` module, `config["tts"]["backend"]` toggle. Rejected NaturalVoiceSAPIAdapter — third-party SAPI DLL, trust issues.
 - [ ] **PR 3 — `feat/koda-signature-voice` — Alex's wife's voice as Koda default.** Record ~30 min-2 hr clean audio, train Piper custom model, ship `.onnx` as default. Amy stays selectable. See `project_voice_roadmap.md` memory for full plan.
 
+## Coworker perf issue (session 49 — tackle 2026-04-30)
+
+- [ ] **Coworker reports Koda slowing his PC significantly.** He's still on the OLD installer (presumed v4.3.1 — never re-shared). Likely fix order per `feedback_koda_perf_levers.md`: 1) `process_priority` `"above_normal"` → `"normal"` (biggest lever, no quality hit; comment in `config.py:33` literally says it preempts normal-priority work), 2) `cpu_threads` 4 → 2, 3) `model_size` `small` → `base`. Easiest delivery = ship a `config.json` patch (3 keys) with drop-in instructions, no reinstall. Triage first: ask which version, when slowdown happens (idle / recording only / always), coworker's specs.
+
 ## Small fixes (discovered during live-test)
 
 - [ ] **Port v2 pickers to Inno Setup installer** — `configure.py` has `setup_prompt_voice` + `setup_prompt_backend` (Step 9 + Step 10 of Python wizard) but Inno installer bypasses configure.py entirely. End users never see the v2 pickers unless they manually run `venv\Scripts\python configure.py` post-install. Port to Pascal `[Code]` pages in `installer/koda.iss`.
