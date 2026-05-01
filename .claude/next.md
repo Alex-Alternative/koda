@@ -19,9 +19,17 @@
 
 - [ ] **`docs/user-guide.html` is stale (Apr 20).** Predates v4.4.0-beta1 features: auto-polish on Send, Atlas Navy overlay, voice-confirm ("say send"), 2-slot Q&A (Format slot dropped), Polish-not-Refine rename, settings GUI redesign. NOT bundled in installer (per `koda.iss` [Files] section), so coworker install isn't affected — but the guide is wrong if anyone hits it from `docs/` or the repo. Update before tagging v4.4.0-beta1 officially. `docs/user-guide.md` (same date) is also stale. Easiest path: regenerate from `user-guide.md` after updating .md, then re-export to .html.
 
-## Transcription speed gap vs paid Whisper (session 50)
+## Transcription speed gap vs paid Whisper (session 50, researched session 51)
 
-- [ ] **Koda is noticeably slower than the paid Whisper service Alex's boss uses** — boss's tool is "lightning fast no matter the length of the speech." Likely root cause: paid services run Whisper on cloud GPU (large-v3 in fp16 on A100s/H100s); Koda runs `small` model on local CPU via faster-whisper/CTranslate2. Levers to investigate: (a) move from `small` → `tiny` for speed-critical use (accuracy hit), (b) explore CUDA path for users with NVIDIA GPUs (currently CPU-only on Alex's Intel UHD), (c) consider an optional cloud-API backend (OpenAI Whisper API or Groq's whisper-large-v3 on LPU — Groq is the actual "lightning fast" benchmark, sub-second for minute-long clips), (d) streaming transcription vs current batch-on-stop. Note: this is product-roadmap territory, not a quick fix.
+Research write-up: `docs/research/whisper-speed-analysis-2026-05-01.md`. Summary: boss's tool is **Wispr Flow** ($144/yr, sub-700ms cloud GPU). Gap is fundamental local-CPU-vs-cloud-GPU; no CPU optimization closes it. Three levers below are the validated picks.
+
+- [ ] **Lever #1 — Opt-in Groq cloud backend (`whisper-large-v3-turbo`).** ~150 LOC + a settings GUI toggle + key in `keyring`. 216× real-time, $0.04/hr, free tier covers personal use. Local CPU stays the privacy default; cloud is the speed mode. Only lever that actually closes the gap to Wispr Flow. Use forge-brainstorm before coding — multi-file, new dependency, privacy-sensitive (audio leaves the machine).
+- [ ] **Lever #2 — A/B `cpu_threads` at 1 vs 4 vs 8 on UHD-770 host.** Five-minute test: change `config.json`, dictate the same 60s clip three times per setting, compare `Transcribe timings` lines in `debug.log`. faster-whisper issue #526 documents 4 as pessimal on Intel parts. Possibly free 1.5–2×. Do FIRST — pins the local-CPU ceiling honestly before deciding how aggressively to push the cloud rollout.
+- [ ] **Lever #3 — "Speed mode" toggle: `small` → `tiny` per mode.** Per-mode (chat dictation = OK to use tiny; prompt-assist = NOT OK, LLM amplifies misheard words). PyInstaller bundle already supports multi-model fallback via `voice.py:392`. Trivial wiring + a settings checkbox.
+
+Don't do: ship `large-v3-turbo` on local CPU (counterintuitively slower than `small`); switch default `small`→`tiny` for everyone; rebuild on OpenVINO until cloud lever is done.
+
+Also worth flagging: `config.json` says `streaming: true`, but `voice.py:832-855` only streams the tray-tooltip *preview*, not the paste. Final paste at line 909 re-transcribes from scratch. Real paste-time streaming via `whisper_streaming` is a separate ~3-5× perceived-speed lever (lever #c in the research write-up, ranked below #1 because it's higher-effort).
 
 ## Small fixes (discovered during live-test)
 

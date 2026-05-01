@@ -227,6 +227,60 @@ n/a — koda is a desktop app, no DB migrations.
 No tests run this session (no source code changed). Baseline from
 session 50: 431/431 tests passing on `feat/overlay-rounded-buttons`.
 
+## Post-handover research — Whisper speed gap
+
+After the main handover landed, Alex asked for deep research on why Koda
+is slower than the boss's $120/yr "lightning fast" voice service. A
+background `general-purpose` Agent ran 256s, hit 16+ web sources, and
+wrote a 2,768-word write-up at:
+
+`C:\Users\alex\Projects\koda\docs\research\whisper-speed-analysis-2026-05-01.md`
+
+**Headline findings:**
+
+- **The boss's tool is Wispr Flow** ($12/mo annual = $144/yr, high
+  confidence). Engineering target `<700ms` end-to-end via Baseten cloud
+  GPUs running fine-tuned Llama-class models with TensorRT-LLM.
+- **The gap is fundamental hardware.** Koda runs `small` int8 on Intel
+  UHD 770 + 4 CPU threads at 5–10× real-time. Whisper inference is
+  >97% of every transcribe (concat = 0ms always). Koda's plumbing is
+  not leaving major performance on the table — the published
+  faster-whisper benchmark on a beefier 12700K hits the same multiplier.
+- **Surprise:** `config.json` says `streaming: true`, but reading
+  `voice.py:832-855`, Koda streams the *tray-tooltip preview* every 2s
+  during recording — not the *paste*. Final paste re-transcribes from
+  scratch via `_transcribe_and_paste()` at line 929. Wispr Flow's "no
+  matter the length" feel comes from real paste-time streaming.
+
+**Top 3 levers (research-validated):**
+
+1. **Opt-in Groq cloud backend** — `whisper-large-v3-turbo`, 216×
+   real-time, $0.04/hr or generous free tier. ~150 LOC + settings
+   toggle. Local CPU stays the privacy default. **Only lever that
+   actually closes the gap.**
+2. **A/B `cpu_threads` at 1 and 8** before anything else — faster-whisper
+   issue #526 documents 4 as pessimal on Intel parts. UHD 770 host has
+   E+P cores, so 6 (P-core count) or 8 (P-core threads) is the likely
+   optimum. Trivial test, possibly free 1.5–2×.
+3. **"Speed mode" toggle: `small` → `tiny`** — 3–6× faster, ~12% WER
+   hit. Per-mode toggle (chat-message dictation OK; prompt-assist not OK
+   because LLM amplifies misheard words).
+
+**Don't do (research-validated negatives):**
+- Ship `large-v3-turbo` on local CPU — counterintuitively *slower* than
+  `small` on CPU.
+- Switch default model from `small` → `tiny` for everyone — accuracy
+  hit too steep for prompt-assist.
+- Rebuild on OpenVINO until cloud lever is done — heavy refactor for
+  ~2× when cloud gives 50×.
+
+**Memory entry created:**
+`reference_koda_speed_gap.md` — durable conclusion so a future session
+doesn't re-research the same question.
+
+`.claude/next.md` updated with three concrete sub-items under the
+existing "Transcription speed gap" entry.
+
 ## Resume pointer
 
 ```
