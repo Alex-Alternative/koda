@@ -9,7 +9,19 @@
 
 ## Coworker perf issue (session 49 — tackle 2026-04-30)
 
-- [ ] **Coworker reports Koda slowing his PC significantly.** He's still on the OLD installer (presumed v4.3.1 — never re-shared). Likely fix order per `feedback_koda_perf_levers.md`: 1) `process_priority` `"above_normal"` → `"normal"` (biggest lever, no quality hit; comment in `config.py:33` literally says it preempts normal-priority work), 2) `cpu_threads` 4 → 2, 3) `model_size` `small` → `base`. Easiest delivery = ship a `config.json` patch (3 keys) with drop-in instructions, no reinstall. Triage first: ask which version, when slowdown happens (idle / recording only / always), coworker's specs.
+- [x] **Coworker reports Koda slowing his PC significantly.** Rebuilt KodaSetup-4.4.0-beta1.exe (560MB, session 50, 2026-04-30) for re-share via Google Drive. Built from `feat/overlay-rounded-buttons` (Atlas Navy overlay confirmed good — Alex tested at home). Likely fix order per `feedback_koda_perf_levers.md` if perf complaints persist post-upgrade: 1) `process_priority` `"above_normal"` → `"normal"`, 2) `cpu_threads` 4 → 2, 3) `model_size` `small` → `base`.
+
+## Mac version (session 50 — separate work)
+
+- [ ] **Build a Mac version of Koda.** Coworker is Windows but Alex wants Mac parity. Hard blockers: (a) PyInstaller does NOT cross-compile — must build on a Mac, (b) 8 modules import Win32-specific code (`win32`, `winreg`, `comtypes`, `pystray._win32`, `pyttsx3.drivers.sapi5`, `popen_spawn_win32`) — `voice.py`, `active_window.py`, `context_menu.py`, `formula_mode.py`, `prompt_conversation.py`, `settings_gui.py`, `test_features.py`, `build_exe.py`. (c) `koda.iss` is Inno Setup (Windows-only) — Mac equivalent is `.app` bundle wrapped in `.dmg` via `dmgbuild` or `create-dmg`. (d) Apple Developer account ($99/yr) needed for code signing + notarization, otherwise Gatekeeper warnings on the coworker's machine. (e) macOS permissions ceremony: Accessibility (global hotkeys + paste), Input Monitoring (key listening), Microphone. Realistic effort: several days of porting on a Mac dev box, multi-session project.
+
+## Docs drift (session 50)
+
+- [ ] **`docs/user-guide.html` is stale (Apr 20).** Predates v4.4.0-beta1 features: auto-polish on Send, Atlas Navy overlay, voice-confirm ("say send"), 2-slot Q&A (Format slot dropped), Polish-not-Refine rename, settings GUI redesign. NOT bundled in installer (per `koda.iss` [Files] section), so coworker install isn't affected — but the guide is wrong if anyone hits it from `docs/` or the repo. Update before tagging v4.4.0-beta1 officially. `docs/user-guide.md` (same date) is also stale. Easiest path: regenerate from `user-guide.md` after updating .md, then re-export to .html.
+
+## Transcription speed gap vs paid Whisper (session 50)
+
+- [ ] **Koda is noticeably slower than the paid Whisper service Alex's boss uses** — boss's tool is "lightning fast no matter the length of the speech." Likely root cause: paid services run Whisper on cloud GPU (large-v3 in fp16 on A100s/H100s); Koda runs `small` model on local CPU via faster-whisper/CTranslate2. Levers to investigate: (a) move from `small` → `tiny` for speed-critical use (accuracy hit), (b) explore CUDA path for users with NVIDIA GPUs (currently CPU-only on Alex's Intel UHD), (c) consider an optional cloud-API backend (OpenAI Whisper API or Groq's whisper-large-v3 on LPU — Groq is the actual "lightning fast" benchmark, sub-second for minute-long clips), (d) streaming transcription vs current batch-on-stop. Note: this is product-roadmap territory, not a quick fix.
 
 ## Small fixes (discovered during live-test)
 
