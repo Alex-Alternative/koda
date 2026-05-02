@@ -3460,5 +3460,96 @@ class TestThresholdsIssUpToDate(unittest.TestCase):
                 f.write(before)
 
 
+class TestConfigMigration(unittest.TestCase):
+    """First-launch upgrade behaviour for pre-tier-system installs.
+
+    The hardware tier system shipped in v4.5.0; existing v4.4.0-beta1 configs
+    have no system_check_tier field. load_config must stamp the tier without
+    touching the user's existing model/threads/priority values, and flag the
+    config as 'custom' if those values diverge from the auto-tier defaults.
+    """
+
+    def setUp(self):
+        from config import CONFIG_PATH
+        self._tmp_path = CONFIG_PATH + ".test"
+
+    def tearDown(self):
+        if os.path.exists(self._tmp_path):
+            os.unlink(self._tmp_path)
+
+    def _run_migration(self, existing, classify_result):
+        from config import load_config
+        with open(self._tmp_path, "w", encoding="utf-8") as f:
+            json.dump(existing, f)
+        with patch("config.CONFIG_PATH", self._tmp_path), \
+             patch("system_check.classify", return_value=classify_result):
+            return load_config()
+
+    def test_existing_install_with_customised_values_flips_to_custom(self):
+        loaded = self._run_migration(
+            existing={"model_size": "base", "cpu_threads": 8},
+            classify_result={
+                "tier": "RECOMMENDED",
+                "defaults": {
+                    "model_size": "small",
+                    "cpu_threads": 4,
+                    "process_priority": "above_normal",
+                },
+            },
+        )
+        # User's customised values must NOT be overwritten
+        self.assertEqual(loaded["model_size"], "base")
+        self.assertEqual(loaded["cpu_threads"], 8)
+        self.assertEqual(loaded["system_check_tier"], "RECOMMENDED")
+        self.assertEqual(loaded["system_check_mode"], "custom")
+
+    def test_existing_install_matching_defaults_flips_to_auto_detect(self):
+        # User config matches what classify() would have written → auto-detect
+        loaded = self._run_migration(
+            existing={
+                "model_size": "small",
+                "cpu_threads": 4,
+                "process_priority": "above_normal",
+            },
+            classify_result={
+                "tier": "RECOMMENDED",
+                "defaults": {
+                    "model_size": "small",
+                    "cpu_threads": 4,
+                    "process_priority": "above_normal",
+                },
+            },
+        )
+        self.assertEqual(loaded["system_check_tier"], "RECOMMENDED")
+        self.assertEqual(loaded["system_check_mode"], "auto-detect")
+
+    def test_existing_install_already_stamped_skips_migration(self):
+        # Configs that already carry system_check_tier are not re-classified.
+        from config import load_config
+        existing = {
+            "model_size": "tiny",
+            "system_check_tier": "MINIMUM",
+            "system_check_mode": "minimum",
+        }
+        with open(self._tmp_path, "w", encoding="utf-8") as f:
+            json.dump(existing, f)
+        with patch("config.CONFIG_PATH", self._tmp_path), \
+             patch("system_check.classify") as classify_mock:
+            loaded = load_config()
+            classify_mock.assert_not_called()
+        self.assertEqual(loaded["system_check_tier"], "MINIMUM")
+        self.assertEqual(loaded["system_check_mode"], "minimum")
+
+    def test_classify_failure_falls_back_to_recommended(self):
+        from config import load_config
+        with open(self._tmp_path, "w", encoding="utf-8") as f:
+            json.dump({"model_size": "small"}, f)
+        with patch("config.CONFIG_PATH", self._tmp_path), \
+             patch("system_check.classify", side_effect=RuntimeError("boom")):
+            loaded = load_config()
+        self.assertEqual(loaded["system_check_tier"], "RECOMMENDED")
+        self.assertEqual(loaded["system_check_mode"], "auto-detect")
+
+
 if __name__ == "__main__":
     unittest.main()
