@@ -7,13 +7,10 @@ import json
 import os
 import sys
 import time
-import webbrowser
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.json")
-
-CUDA_DOWNLOAD_URL = "https://developer.nvidia.com/cuda-downloads"
 
 
 def clear():
@@ -63,31 +60,49 @@ def ask_yes_no(prompt, default=True):
 
 def setup_performance():
     """
-    Detect GPU and offer Standard vs Power Mode.
-    Returns (model_size, compute_type) or (None, "int8") to let setup_model() decide.
-    Bucket A — CUDA ready:       offer Power Mode choice
-    Bucket B — NVIDIA, no CUDA:  offer to auto-install or show download URL
-    Bucket C — no GPU:           silent, return CPU defaults
+    Detect hardware tier via system_check.classify() and offer the matching
+    flow:
+      POWER       → "Power Mode unlocked" + Standard Mode fallback
+      RECOMMENDED → silent (returns CPU defaults, no UI)
+      MINIMUM     → soft-warn page; user proceeds with tiny/threads=2/normal
+      BLOCKED     → should never reach here (caller filters)
     """
-    from hardware import detect_gpu, get_nvidia_gpu_name, try_install_cuda_packages
+    from system_check import classify
 
     print("  Checking your hardware...", end="", flush=True)
-    status = detect_gpu()
+    result = classify()
     print(" done.\n")
 
-    # ── Bucket C: no GPU — silent ────────────────────────────
-    if status == "none":
-        return None, "int8"
+    tier = result["tier"]
+    defaults = result["defaults"]
+    hardware = result["hardware"]
 
-    gpu_name = get_nvidia_gpu_name() or "NVIDIA GPU"
+    if tier == "RECOMMENDED":
+        # silent — no UI, return defaults so caller writes them
+        return defaults["model_size"], defaults["compute_type"]
 
-    # ── Bucket A: CUDA ready — offer Power Mode ──────────────
-    if status == "cuda_ready":
+    if tier == "MINIMUM":
         clear()
         banner()
         print("  STEP 1 of 9: PERFORMANCE\n")
         print("  ─────────────────────────────────────────\n")
-        print(f"  Great news — your computer supports Power Mode!\n")
+        print("  Your PC is below recommended specs for Koda.")
+        print(f"  Detected: {hardware.get('cpu_name', 'unknown CPU')}")
+        print(f"            {hardware.get('cores', '?')} cores, "
+              f"{hardware.get('ram_gb', '?')} GB RAM\n")
+        print("  Koda will configure itself for the best experience your PC")
+        print("  can deliver. Transcription will be slower than typical.")
+        print("  You can change these settings in Koda → Settings → Performance.\n")
+        input("  Press Enter to continue...")
+        return defaults["model_size"], defaults["compute_type"]
+
+    if tier == "POWER":
+        clear()
+        banner()
+        print("  STEP 1 of 9: PERFORMANCE\n")
+        print("  ─────────────────────────────────────────\n")
+        gpu_name = hardware.get("nvidia_gpu_name", "your NVIDIA GPU")
+        print(f"  Power Mode unlocked.\n")
         print(f"  Detected: {gpu_name}\n")
         print("  Standard Mode          Power Mode")
         print("  ───────────────────    ──────────────────────")
@@ -107,14 +122,30 @@ def setup_performance():
         input("  Press Enter to continue...")
 
         if choice == "power":
-            return "large-v3-turbo", "float16"
-        return None, "int8"
+            return defaults["model_size"], defaults["compute_type"]
+        # User picked standard despite Power Mode availability — return RECOMMENDED defaults
+        from system_check_constants import TIER_DEFAULTS
+        rec = TIER_DEFAULTS["RECOMMENDED"]
+        return rec["model_size"], rec["compute_type"]
 
-    # ── Bucket B: NVIDIA present but CUDA not set up ─────────
+    # POWER but CUDA not usable → existing Bucket-B flow (offer auto-install)
+    if hardware.get("nvidia_gpu_name") and not hardware.get("cuda_runtime_usable"):
+        return _offer_cuda_install(hardware)
+
+    # BLOCKED should never reach here, but if it does, fail safe to MINIMUM
+    return defaults.get("model_size", "tiny"), defaults.get("compute_type", "int8")
+
+
+def _offer_cuda_install(hardware):
+    """Bucket-B: NVIDIA detected but CUDA runtime not usable. Offer auto-install."""
+    from hardware import try_install_cuda_packages
+    from system_check_constants import TIER_DEFAULTS
+
     clear()
     banner()
     print("  STEP 1 of 9: PERFORMANCE\n")
     print("  ─────────────────────────────────────────\n")
+    gpu_name = hardware.get("nvidia_gpu_name", "your NVIDIA GPU")
     print(f"  We found an NVIDIA GPU on your machine ({gpu_name}).")
     print("  Power Mode needs one extra piece to work.\n")
     print("  Power Mode gives you:")
@@ -126,95 +157,21 @@ def setup_performance():
         [
             ("Try to set it up automatically  (downloads ~400MB)", "auto"),
             ("Skip for now — use Standard Mode", "skip"),
-            ("Show me how to set it up myself", "manual"),
         ],
         default=0,
     )
 
     if choice == "auto":
-        print("\n  Installing GPU support — this may take a few minutes...")
-        print("  (downloading NVIDIA runtime packages)\n")
-        success = try_install_cuda_packages()
-        if success:
+        print("\n  Installing GPU support — this may take a few minutes...\n")
+        if try_install_cuda_packages():
             print("  GPU support installed successfully!\n")
-            print("  Standard Mode          Power Mode")
-            print("  ───────────────────    ──────────────────────")
-            print("  Good accuracy          Excellent accuracy")
-            print("  ~1-2 sec response      Near-instant response\n")
-            confirm = ask_choice(
-                "Power Mode is ready. Which would you like?",
-                [
-                    ("Power Mode  — faster and smarter (recommended)", "power"),
-                    ("Standard Mode", "standard"),
-                ],
-                default=0,
-            )
-            print()
             input("  Press Enter to continue...")
-            if confirm == "power":
-                return "large-v3-turbo", "float16"
-            return None, "int8"
-        else:
-            print("  Automatic setup didn't work on this system.\n")
-            print("  You can still enable Power Mode manually:")
-            print(f"    1. Download and install the NVIDIA CUDA Toolkit from:")
-            print(f"       {CUDA_DOWNLOAD_URL}")
-            print("    2. Restart Koda")
-            print("    3. Open Settings and switch to Power Mode\n")
-            print("  Saving instructions to: ENABLE_POWER_MODE.txt\n")
-            _save_power_mode_instructions(gpu_name)
-            open_browser = ask_yes_no("Open the NVIDIA download page in your browser now?", default=True)
-            if open_browser:
-                webbrowser.open(CUDA_DOWNLOAD_URL)
-            input("\n  Press Enter to continue with Standard Mode...")
-            return None, "int8"
-
-    elif choice == "manual":
-        print()
-        print("  To enable Power Mode:")
-        print(f"    1. Download the NVIDIA CUDA Toolkit (free):")
-        print(f"       {CUDA_DOWNLOAD_URL}")
-        print("    2. Install it and restart your computer")
-        print("    3. Open Koda Settings and click 'Enable Power Mode'\n")
-        print("  Saving these instructions to: ENABLE_POWER_MODE.txt\n")
-        _save_power_mode_instructions(gpu_name)
-        open_browser = ask_yes_no("Open the NVIDIA download page now?", default=True)
-        if open_browser:
-            webbrowser.open(CUDA_DOWNLOAD_URL)
-        input("\n  Press Enter to continue with Standard Mode...")
-        return None, "int8"
-
-    # choice == "skip"
-    print()
-    input("  Press Enter to continue with Standard Mode...")
-    return None, "int8"
-
-
-def _save_power_mode_instructions(gpu_name):
-    """Write a plain-text reminder file to the koda folder."""
-    path = os.path.join(SCRIPT_DIR, "ENABLE_POWER_MODE.txt")
-    lines = [
-        "Koda Power Mode — Setup Instructions",
-        "=" * 40,
-        "",
-        f"Your GPU: {gpu_name}",
-        "",
-        "Power Mode gives Koda near-instant transcription and better accuracy.",
-        "To enable it:",
-        "",
-        "  1. Download the NVIDIA CUDA Toolkit (free) from:",
-        f"     {CUDA_DOWNLOAD_URL}",
-        "",
-        "  2. Install it and restart your computer.",
-        "",
-        "  3. Open Koda Settings (right-click the tray icon > Settings)",
-        "     and click 'Enable Power Mode' in the Performance section.",
-        "",
-        "  That's it — Koda will switch to Power Mode automatically.",
-        "",
-    ]
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+            power = TIER_DEFAULTS["POWER"]
+            return power["model_size"], power["compute_type"]
+        print("  Automatic setup didn't work. Falling back to Standard Mode.\n")
+        input("  Press Enter to continue...")
+    rec = TIER_DEFAULTS["RECOMMENDED"]
+    return rec["model_size"], rec["compute_type"]
 
 
 # ============================================================

@@ -686,7 +686,9 @@ class KodaSettings(tk.Tk):
             ttk.Button(pbr, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
     def _build_advanced_tab(self, parent):
-        self._section_header(parent, "Appearance", first=True)
+        self._build_performance_section(parent)
+
+        self._section_header(parent, "Appearance")
         ar = ttk.Frame(parent); ar.pack(fill="x", pady=(0, 4))
         ttk.Label(ar, text="Theme").pack(side="left", padx=(0, 12))
         self._theme_btn = ttk.Button(ar, text=self._theme_toggle_label(),
@@ -771,24 +773,164 @@ class KodaSettings(tk.Tk):
 
         ttk.Button(parent, text="Update API key…", command=self._update_prompt_api_key).pack(anchor="w", pady=(4, 0))
 
-        self._section_header(parent, "Performance")
-        current_compute = self.config_data.get("compute_type", "int8")
-        mode_text = "Power Mode  (NVIDIA GPU)" if current_compute == "float16" else "Standard Mode  (CPU)"
-        ttk.Label(parent, text=f"Current: {mode_text}").pack(anchor="w")
-        self._perf_status_var = tk.StringVar(value="")
-        ttk.Label(parent, textvariable=self._perf_status_var, style="Success.TLabel").pack(anchor="w", pady=(2, 0))
-        pbr = ttk.Frame(parent); pbr.pack(anchor="w", pady=(8, 0))
-        ttk.Button(pbr, text="Check GPU", command=self._check_gpu).pack(side="left", padx=(0, 6))
-        if current_compute != "float16":
-            ttk.Button(pbr, text="Enable Power Mode", command=self._enable_power_mode).pack(side="left", padx=(0, 6))
-        else:
-            ttk.Button(pbr, text="Switch to Standard Mode", command=self._disable_power_mode).pack(side="left", padx=(0, 6))
-        ttk.Button(pbr, text="Learn more", command=self._open_cuda_url).pack(side="left")
-
         self._section_header(parent, "History")
         hbr = ttk.Frame(parent); hbr.pack(anchor="w")
         ttk.Button(hbr, text="View transcript history", command=self._open_history).pack(side="left", padx=(0, 8))
         ttk.Button(hbr, text="Export history", command=self._export_history).pack(side="left")
+
+    def _build_performance_section(self, parent):
+        """Performance Mode dropdown + Advanced expander + status line."""
+        from system_check import classify
+        from system_check_constants import TIER_DEFAULTS
+
+        palette = self._palette()
+
+        # Section header
+        self._section_header(parent, "Performance", first=True)
+
+        # Run classification once for status display
+        self._tier_result = classify()
+        tier = self._tier_result["tier"]
+        hw = self._tier_result["hardware"]
+
+        current_mode = self.config_data.get("system_check_mode", "auto-detect")
+
+        # Status line
+        if current_mode == "auto-detect":
+            status_text = (
+                f"Currently: Auto-detect → {tier.title()}\n"
+                f"Your hardware: {hw.get('cores', '?')} cores, "
+                f"{hw.get('ram_gb', '?')} GB RAM, "
+                f"{hw.get('nvidia_gpu_name') or 'no NVIDIA GPU'}."
+            )
+        else:
+            status_text = (
+                f"Currently: {current_mode.title()} (manual override)\n"
+                f"Auto-detect would pick: {tier.title()}."
+            )
+
+        self._status_label = ttk.Label(
+            parent, text=status_text,
+            font=(FONT_BODY, 9), foreground=palette["text_dim"],
+            justify="left",
+        )
+        self._status_label.pack(anchor="w", pady=(0, 8))
+
+        # Performance Mode dropdown
+        mode_frame = ttk.Frame(parent)
+        mode_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(mode_frame, text="Performance Mode:", font=(FONT_BODY, 10)).pack(side="left", padx=(0, 8))
+
+        self._perf_mode_var = tk.StringVar(value=current_mode)
+        mode_options = ["auto-detect", "minimum", "recommended"]
+        if hw.get("nvidia_gpu_name"):
+            mode_options.append("power")
+        if current_mode == "custom":
+            mode_options.append("custom")
+
+        mode_combo = ttk.Combobox(
+            mode_frame,
+            textvariable=self._perf_mode_var,
+            values=[m.replace("-", " ").title() for m in mode_options],
+            state="readonly",
+            width=22,
+        )
+        mode_combo.pack(side="left")
+        mode_combo.bind("<<ComboboxSelected>>", self._on_perf_mode_change)
+
+        # Advanced expander
+        self._adv_expanded = tk.BooleanVar(value=(current_mode == "custom"))
+        self._adv_toggle_btn = ttk.Button(
+            parent, text="▶ Advanced (override individual settings)",
+            command=self._toggle_advanced_perf,
+        )
+        self._adv_toggle_btn.pack(anchor="w", pady=(4, 4))
+
+        self._adv_perf_frame = ttk.Frame(parent)
+        if self._adv_expanded.get():
+            self._adv_perf_frame.pack(fill="x", pady=(0, 8))
+            self._adv_toggle_btn.config(text="▼ Advanced (override individual settings)")
+
+        # Model size
+        msize_frame = ttk.Frame(self._adv_perf_frame)
+        msize_frame.pack(fill="x", pady=2)
+        ttk.Label(msize_frame, text="Model size:", font=(FONT_BODY, 9), width=18, anchor="w").pack(side="left")
+        self._model_size_var = tk.StringVar(value=self.config_data.get("model_size", "small"))
+        msize_combo = ttk.Combobox(
+            msize_frame, textvariable=self._model_size_var,
+            values=["tiny", "base", "small", "large-v3-turbo"],
+            state="readonly", width=18,
+        )
+        msize_combo.pack(side="left")
+        msize_combo.bind("<<ComboboxSelected>>", lambda e: self._on_advanced_change())
+
+        # CPU threads
+        thread_frame = ttk.Frame(self._adv_perf_frame)
+        thread_frame.pack(fill="x", pady=2)
+        ttk.Label(thread_frame, text="CPU threads:", font=(FONT_BODY, 9), width=18, anchor="w").pack(side="left")
+        self._cpu_threads_var = tk.IntVar(value=self.config_data.get("cpu_threads", 4))
+        threads_spin = ttk.Spinbox(
+            thread_frame, from_=1, to=16, textvariable=self._cpu_threads_var,
+            width=5, command=self._on_advanced_change,
+        )
+        threads_spin.pack(side="left")
+
+        # Process priority
+        prio_frame = ttk.Frame(self._adv_perf_frame)
+        prio_frame.pack(fill="x", pady=2)
+        ttk.Label(prio_frame, text="Process priority:", font=(FONT_BODY, 9), width=18, anchor="w").pack(side="left")
+        self._priority_var = tk.StringVar(value=self.config_data.get("process_priority", "above_normal"))
+        prio_combo = ttk.Combobox(
+            prio_frame, textvariable=self._priority_var,
+            values=["normal", "above_normal", "high"],
+            state="readonly", width=18,
+        )
+        prio_combo.pack(side="left")
+        prio_combo.bind("<<ComboboxSelected>>", lambda e: self._on_advanced_change())
+
+    def _toggle_advanced_perf(self):
+        """Show/hide the advanced controls."""
+        if self._adv_expanded.get():
+            self._adv_perf_frame.pack_forget()
+            self._adv_expanded.set(False)
+            self._adv_toggle_btn.config(text="▶ Advanced (override individual settings)")
+        else:
+            self._adv_perf_frame.pack(fill="x", pady=(0, 8))
+            self._adv_expanded.set(True)
+            self._adv_toggle_btn.config(text="▼ Advanced (override individual settings)")
+
+    def _on_perf_mode_change(self, event=None):
+        """User picked a tier from the dropdown - apply that tier's defaults."""
+        from system_check_constants import TIER_DEFAULTS
+
+        selected = self._perf_mode_var.get().lower().replace(" ", "-")
+        self.config_data["system_check_mode"] = selected
+
+        if selected == "auto-detect":
+            defaults = self._tier_result["defaults"]
+        elif selected == "custom":
+            # Don't change the advanced values - user is editing them directly
+            return
+        else:
+            # minimum / recommended / power
+            tier_key = selected.upper()
+            defaults = TIER_DEFAULTS.get(tier_key, {})
+
+        if defaults:
+            self.config_data["model_size"] = defaults.get("model_size", "small")
+            self.config_data["cpu_threads"] = defaults.get("cpu_threads", 4)
+            self.config_data["process_priority"] = defaults.get("process_priority", "above_normal")
+            self._model_size_var.set(self.config_data["model_size"])
+            self._cpu_threads_var.set(self.config_data["cpu_threads"])
+            self._priority_var.set(self.config_data["process_priority"])
+
+    def _on_advanced_change(self):
+        """User edited an Advanced control - flip mode to 'custom'."""
+        self._perf_mode_var.set("Custom")
+        self.config_data["system_check_mode"] = "custom"
+        self.config_data["model_size"] = self._model_size_var.get()
+        self.config_data["cpu_threads"] = int(self._cpu_threads_var.get())
+        self.config_data["process_priority"] = self._priority_var.get()
 
     def _get_voices(self):
         try:
@@ -1390,71 +1532,6 @@ class KodaSettings(tk.Tk):
                 messagebox.showinfo("Koda", f"History exported to:\n{filepath}")
             except Exception as e:
                 messagebox.showerror("Koda", f"Export failed: {e}")
-
-    def _check_gpu(self):
-        """Run GPU detection and report result in the UI."""
-        self._perf_status_var.set("Checking...")
-        self.update_idletasks()
-        try:
-            from hardware import detect_gpu, get_nvidia_gpu_name
-            status = detect_gpu()
-            if status == "cuda_ready":
-                gpu = get_nvidia_gpu_name() or "NVIDIA GPU"
-                self._perf_status_var.set(f"Power Mode available — {gpu} detected with CUDA ready.")
-            elif status == "nvidia_no_cuda":
-                gpu = get_nvidia_gpu_name() or "NVIDIA GPU"
-                self._perf_status_var.set(f"{gpu} found but CUDA not set up. Click 'Enable Power Mode' to try.")
-            else:
-                self._perf_status_var.set("No NVIDIA GPU detected — Standard Mode is the right choice.")
-        except Exception as e:
-            self._perf_status_var.set(f"Detection error: {e}")
-
-    def _enable_power_mode(self):
-        """Attempt to install CUDA packages and switch to Power Mode."""
-        from tkinter import messagebox
-        self._perf_status_var.set("Installing GPU support — this may take a few minutes...")
-        self.update_idletasks()
-        try:
-            from hardware import detect_gpu, try_install_cuda_packages
-            status = detect_gpu()
-            if status == "cuda_ready":
-                self.config_data["compute_type"] = "float16"
-                self.config_data["model_size"] = "large-v3-turbo"
-                save_config(self.config_data)
-                self._perf_status_var.set("Power Mode enabled! Restart Koda to apply.")
-                messagebox.showinfo("Koda", "Power Mode enabled!\n\nRestart Koda to use your GPU.")
-            elif status == "nvidia_no_cuda":
-                success = try_install_cuda_packages()
-                if success:
-                    self.config_data["compute_type"] = "float16"
-                    self.config_data["model_size"] = "large-v3-turbo"
-                    save_config(self.config_data)
-                    self._perf_status_var.set("Power Mode enabled! Restart Koda to apply.")
-                    messagebox.showinfo("Koda", "Power Mode enabled!\n\nRestart Koda to use your GPU.")
-                else:
-                    self._perf_status_var.set("Automatic setup failed. See 'Learn more' for manual steps.")
-                    messagebox.showwarning(
-                        "Koda",
-                        "Automatic GPU setup didn't work on this system.\n\n"
-                        "Click 'Learn more' to download the NVIDIA CUDA Toolkit manually.\n"
-                        "After installing it, come back here and click 'Enable Power Mode' again."
-                    )
-            else:
-                self._perf_status_var.set("No NVIDIA GPU found — Power Mode is not available on this machine.")
-        except Exception as e:
-            self._perf_status_var.set(f"Error: {e}")
-
-    def _disable_power_mode(self):
-        """Switch back to Standard Mode (CPU)."""
-        self.config_data["compute_type"] = "int8"
-        self.config_data["model_size"] = "small"
-        save_config(self.config_data)
-        self._perf_status_var.set("Switched to Standard Mode. Restart Koda to apply.")
-
-    def _open_cuda_url(self):
-        """Open the NVIDIA CUDA download page in the browser."""
-        import webbrowser
-        webbrowser.open("https://developer.nvidia.com/cuda-downloads")
 
     def on_close(self):
         self.destroy()
