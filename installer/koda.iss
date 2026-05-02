@@ -419,9 +419,11 @@ end;
 
 { Build the tier-aware config.json string. Tier dictates cpu_threads and
   process_priority; ModelSize is decided by the caller (POWER/MINIMUM
-  override the wizard pick, RECOMMENDED honors it). }
+  override the wizard pick, RECOMMENDED honors it). BalloonShown is
+  'true' when the wizard already celebrated Power Mode (so the runtime
+  GPU-appeared balloon never double-fires) and 'false' otherwise. }
 function BuildTierAwareConfigJson(
-  const Tier, HotkeyMode, ModelSize, FormulaEnabled: String
+  const Tier, HotkeyMode, ModelSize, FormulaEnabled, BalloonShown: String
 ): String;
 var
   CpuThreads, ProcessPriority: String;
@@ -452,6 +454,7 @@ begin
     '  "process_priority": "' + ProcessPriority + '",' + #13#10 +
     '  "system_check_tier": "' + Tier + '",' + #13#10 +
     '  "system_check_mode": "auto-detect",' + #13#10 +
+    '  "power_mode_balloon_shown": ' + BalloonShown + ',' + #13#10 +
     '  "formula_mode": {"enabled": ' + FormulaEnabled +
                        ', "auto_detect_apps": true}' + #13#10 +
     '}';
@@ -460,7 +463,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   HotkeyMode, ModelSize: String;
-  FormulaEnabled: String;
+  FormulaEnabled, BalloonShown: String;
   ConfigDir, ConfigFile, ConfigContent: String;
   TempJsonPath: String;
   JsonText: AnsiString;  { LoadStringFromFile requires AnsiString in Unicode Inno }
@@ -540,6 +543,16 @@ begin
     else
       FormulaEnabled := 'false';
 
+    { Pre-set the GPU-appeared balloon flag when the wizard already
+      celebrated Power Mode (final tier == POWER), so the runtime
+      balloon never double-fires on first launch. Anything else leaves
+      the flag false so the balloon can fire later if the user adds a
+      GPU post-install. }
+    if TierFromJson = 'POWER' then
+      BalloonShown := 'true'
+    else
+      BalloonShown := 'false';
+
     { Write tier-aware config.json to %APPDATA%\Koda\ — only on fresh install }
     ConfigDir := ExpandConstant('{userappdata}') + '\Koda';
     ForceDirectories(ConfigDir);
@@ -548,7 +561,7 @@ begin
     if not FileExists(ConfigFile) then
     begin
       ConfigContent := BuildTierAwareConfigJson(
-        TierFromJson, HotkeyMode, ModelSize, FormulaEnabled
+        TierFromJson, HotkeyMode, ModelSize, FormulaEnabled, BalloonShown
       );
       SaveStringToFile(ConfigFile, ConfigContent, False);
     end;

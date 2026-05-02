@@ -113,6 +113,9 @@ model = None
 tray_icon = None
 stream = None
 config = {}
+# Snapshot of system_check_tier captured BEFORE startup re-detection so the
+# Power Mode balloon (fired in run_setup) can see whether tier changed.
+_tier_before_refresh = "RECOMMENDED"
 vad_model = None
 last_speech_time = 0
 recording_mode = "dictation"
@@ -2072,26 +2075,54 @@ def _on_update_check_result(latest_version, download_url):
         logger.info("Update available: v%s (download: %s)", latest_version, download_url)
 
 
-def _maybe_show_power_unlock_balloon():
-    """One-time tray balloon when a new NVIDIA GPU appears between runs.
+def _refresh_tier_on_startup(config) -> str:
+    """Re-classify hardware on every startup. Auto-detect users get the tier
+    (and bundled defaults) updated silently when their hardware changes —
+    e.g., a RAM upgrade jumps them from MINIMUM to RECOMMENDED, or a new
+    NVIDIA GPU jumps them from RECOMMENDED to POWER. Manual override modes
+    are left alone; detection failure is non-fatal.
 
-    Auto-detect users only — manual overrides keep their chosen tier.
-    Stamps the new tier and a flag so the balloon never re-fires.
+    Returns the tier that was stored before this refresh ran. Callers like
+    _maybe_show_power_unlock_balloon use that snapshot to detect transitions
+    that this function would otherwise silently absorb.
+    """
+    old_tier = config.get("system_check_tier", "RECOMMENDED")
+    if config.get("system_check_mode", "auto-detect") != "auto-detect":
+        return old_tier
+    try:
+        from system_check import classify
+        result = classify()
+    except Exception:
+        return old_tier
+    new_tier = result.get("tier")
+    if new_tier and new_tier != old_tier:
+        config["system_check_tier"] = new_tier
+        defaults = result.get("defaults", {})
+        for key in ("model_size", "cpu_threads", "process_priority"):
+            if key in defaults:
+                config[key] = defaults[key]
+        save_config(config)
+    return old_tier
+
+
+def _maybe_show_power_unlock_balloon(old_tier):
+    """One-time tray balloon when this startup transitioned to POWER.
+
+    _refresh_tier_on_startup has already stamped the new tier; we just need
+    to detect the transition (old_tier was non-POWER, current tier is POWER)
+    and fire the cue. The balloon flag is the source of truth for 'has the
+    user been notified about Power Mode' — fresh POWER installs have it
+    pre-set by the installer's celebration-page write, so we never
+    double-celebrate.
     """
     if config.get("power_mode_balloon_shown", False):
         return
     if config.get("system_check_mode", "auto-detect") != "auto-detect":
         return
-    if config.get("system_check_tier", "RECOMMENDED") == "POWER":
+    if old_tier == "POWER":
         return
-    try:
-        from system_check import classify
-        result = classify()
-    except Exception:
+    if config.get("system_check_tier") != "POWER":
         return
-    if result.get("tier") != "POWER":
-        return
-    config["system_check_tier"] = "POWER"
     config["power_mode_balloon_shown"] = True
     save_config(config)
     if tray_icon:
@@ -2169,7 +2200,7 @@ def run_setup():
         except Exception:
             pass
     flush_pending_error_notifications()
-    _maybe_show_power_unlock_balloon()
+    _maybe_show_power_unlock_balloon(_tier_before_refresh)
 
     # First-run welcome — show hotkey cheat sheet on first launch
     _first_run_path = os.path.join(_DATA_DIR, ".koda_initialized")
@@ -2277,6 +2308,13 @@ def main():
 
     config = load_config()
     config["custom_vocabulary"] = _load_custom_words()
+
+    # Refresh tier from current hardware before applying priority — a RAM /
+    # CPU / GPU change since last run may have moved the user across tiers.
+    # Snapshot the pre-refresh tier so the GPU-appeared balloon (deferred to
+    # run_setup) can detect the transition this refresh would otherwise hide.
+    global _tier_before_refresh
+    _tier_before_refresh = _refresh_tier_on_startup(config)
 
     # Raise scheduling priority before any CPU-heavy work (model load, inference).
     # Keeps Koda responsive when the user also has many Node/Electron sessions open.
