@@ -23,17 +23,27 @@
 
 Research write-up: `docs/research/whisper-speed-analysis-2026-05-01.md`. Summary: boss's tool is **Wispr Flow** ($144/yr, sub-700ms cloud GPU). Gap is fundamental local-CPU-vs-cloud-GPU; no CPU optimization closes it. Three levers below are the validated picks.
 
-- [ ] **Lever #1 — Opt-in Groq cloud backend (`whisper-large-v3-turbo`).** ~150 LOC + a settings GUI toggle + key in `keyring`. 216× real-time, $0.04/hr, free tier covers personal use. Local CPU stays the privacy default; cloud is the speed mode. Only lever that actually closes the gap to Wispr Flow. Use forge-brainstorm before coding — multi-file, new dependency, privacy-sensitive (audio leaves the machine).
-- [ ] **Lever #2 — A/B `cpu_threads` at 1 vs 4 vs 8 on UHD-770 host.** Five-minute test: change `config.json`, dictate the same 60s clip three times per setting, compare `Transcribe timings` lines in `debug.log`. faster-whisper issue #526 documents 4 as pessimal on Intel parts. Possibly free 1.5–2×. Do FIRST — pins the local-CPU ceiling honestly before deciding how aggressively to push the cloud rollout.
-- [ ] **Lever #3 — "Speed mode" toggle: `small` → `tiny` per mode.** Per-mode (chat dictation = OK to use tiny; prompt-assist = NOT OK, LLM amplifies misheard words). PyInstaller bundle already supports multi-model fallback via `voice.py:392`. Trivial wiring + a settings checkbox.
+- [x] **Lever #1 — Opt-in Groq cloud backend** — KILLED session 52. Local-only is a brand promise + recurring cost story unacceptable. Streaming (research's Lever #c) also rejected — would compete with Claude Code for CPU during recording.
+- [ ] **Lever #2 — A/B `cpu_threads` at 1 vs 4 vs 8.** Can run offline via `transcribe_file.py` (no mic flow needed). Deferred — hardware tier system reduces urgency since RECOMMENDED tier already auto-tunes by core count via single-default RECOMMENDED. Revisit if v1 ships and benchmark data is desired before ever adding a sub-tier.
+- [x] **Lever #3 — "Speed mode" toggle: `small` → `tiny` per mode** — SUBSUMED by hardware tier system session 52. MINIMUM tier auto-tunes to `tiny`/`threads=2`/`normal`. Settings GUI Advanced expander allows manual model_size override per user (PR #37 merged).
 
 Don't do: ship `large-v3-turbo` on local CPU (counterintuitively slower than `small`); switch default `small`→`tiny` for everyone; rebuild on OpenVINO until cloud lever is done.
 
 Also worth flagging: `config.json` says `streaming: true`, but `voice.py:832-855` only streams the tray-tooltip *preview*, not the paste. Final paste at line 909 re-transcribes from scratch. Real paste-time streaming via `whisper_streaming` is a separate ~3-5× perceived-speed lever (lever #c in the research write-up, ranked below #1 because it's higher-effort).
 
+## Hardware tier system (session 52 — Phases 1+2 shipped, 3+4 pending)
+
+PRs #37 + #38 merged 2026-05-02. Spec: `docs/specs/2026-05-02-hardware-tier-system-design.md`. Plan: `docs/plans/2026-05-02-hardware-tier-system.md`.
+
+- [x] **Phase 1 — Python classifier + tests + settings GUI** — `system_check.py` + `system_check_constants.py`, `configure.py` wired through `classify()`, settings GUI Performance section with tier dropdown + Advanced expander + status line. 9 commits, +15 tests. PR #37 merged.
+- [x] **Phase 2 — Inno installer integration** — Pascal classifier mirror, build-time codegen for shared thresholds, BLOCKED + MINIMUM wizard pages, `--detect-hardware --json` CLI flag on Koda.exe, ssPostInstall tier-aware config write. 7 commits, +1 test. PR #38 merged.
+- [ ] **Update CLAUDE.md hardware note** — currently says "No NVIDIA GPU — Intel UHD 770 only. CUDA not available." Stale — `system_check.classify()` on home PC returned i7-13650HX / 20 cores / 15.7GB / RTX 4060 Laptop / CUDA usable / **POWER tier**. Whisper has been running CPU-only despite GPU availability.
+- [ ] **Phase 3 — Power Mode celebration** (plan tasks 15–20). AI-generated Atlas Navy banner + PIL composite with K-mark, custom wizard page in koda.iss [Code], audio cue via `mciSendString` PlaySound for `success.wav`, in-app status indicators (tray tooltip suffix `Koda — Power Mode`, settings GUI Atlas Navy badge, K-mark dot navy glow), one-time tray balloon when a NEW NVIDIA GPU appears post-install.
+- [ ] **Phase 4 — Backward-compat + multi-machine validation** (plan tasks 21–24). First-launch detection-without-overwrite for existing v4.4.0-beta1 installs, re-detection on every Koda startup, validate on slow-PC / recommended / power / blocked machine classes.
+
 ## Small fixes (discovered during live-test)
 
-- [ ] **Port v2 pickers to Inno Setup installer** — `configure.py` has `setup_prompt_voice` + `setup_prompt_backend` (Step 9 + Step 10 of Python wizard) but Inno installer bypasses configure.py entirely. End users never see the v2 pickers unless they manually run `venv\Scripts\python configure.py` post-install. Port to Pascal `[Code]` pages in `installer/koda.iss`.
+- [x] **Port v2 pickers to Inno Setup installer** — SUBSUMED by hardware tier system session 52. `system_check.py` is the shared module both wizards (configure.py + Inno installer's [Code] section) now call. PRs #37 + #38 merged.
 - [ ] **Tighten `koda.iss` for friction-free upgrades** — installer currently errors / prompts if Koda is running during upgrade. Add to `[Setup]`: `CloseApplications=yes`, `RestartApplications=yes`, `AppMutex=KodaSingleInstance` (and add the matching mutex to Koda main loop). Result: re-running the installer over an existing install closes Koda, swaps the exe, relaunches — no prompts, no manual kill. Discovered session 51 (2026-05-01) when Alex's main PC was still on v4.3.1 and his boss hit the empty-transcript bug during a demo.
 - [x] **VAD tuning** — `vad.rms_threshold` exposed to config (PR #35 commit `b0c0c38`). `silence_seconds` already config-exposed via `vad.silence_timeout_ms`. Defaults still 0.005 / 1500ms; users can tune per environment.
 - [x] **Template simplification follow-through** — verified already at correct level per `project_template_philosophy.md` (synced from work PC). Intent-specific scaffolding kept; `Context:` block + generic closer were removed session 46. No further pruning warranted.
