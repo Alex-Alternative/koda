@@ -686,7 +686,9 @@ class KodaSettings(tk.Tk):
             ttk.Button(pbr, text=lbl, command=cmd).pack(side="left", padx=(0, 6))
 
     def _build_advanced_tab(self, parent):
-        self._section_header(parent, "Appearance", first=True)
+        self._build_performance_section(parent)
+
+        self._section_header(parent, "Appearance")
         ar = ttk.Frame(parent); ar.pack(fill="x", pady=(0, 4))
         ttk.Label(ar, text="Theme").pack(side="left", padx=(0, 12))
         self._theme_btn = ttk.Button(ar, text=self._theme_toggle_label(),
@@ -789,6 +791,160 @@ class KodaSettings(tk.Tk):
         hbr = ttk.Frame(parent); hbr.pack(anchor="w")
         ttk.Button(hbr, text="View transcript history", command=self._open_history).pack(side="left", padx=(0, 8))
         ttk.Button(hbr, text="Export history", command=self._export_history).pack(side="left")
+
+    def _build_performance_section(self, parent):
+        """Performance Mode dropdown + Advanced expander + status line."""
+        from system_check import classify
+        from system_check_constants import TIER_DEFAULTS
+
+        palette = self._palette()
+
+        # Section header
+        self._section_header(parent, "Performance", first=True)
+
+        # Run classification once for status display
+        self._tier_result = classify()
+        tier = self._tier_result["tier"]
+        hw = self._tier_result["hardware"]
+
+        current_mode = self.config_data.get("system_check_mode", "auto-detect")
+
+        # Status line
+        if current_mode == "auto-detect":
+            status_text = (
+                f"Currently: Auto-detect → {tier.title()}\n"
+                f"Your hardware: {hw.get('cores', '?')} cores, "
+                f"{hw.get('ram_gb', '?')} GB RAM, "
+                f"{hw.get('nvidia_gpu_name') or 'no NVIDIA GPU'}."
+            )
+        else:
+            status_text = (
+                f"Currently: {current_mode.title()} (manual override)\n"
+                f"Auto-detect would pick: {tier.title()}."
+            )
+
+        self._status_label = ttk.Label(
+            parent, text=status_text,
+            font=(FONT_BODY, 9), foreground=palette["text_dim"],
+            justify="left",
+        )
+        self._status_label.pack(anchor="w", pady=(0, 8))
+
+        # Performance Mode dropdown
+        mode_frame = ttk.Frame(parent)
+        mode_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(mode_frame, text="Performance Mode:", font=(FONT_BODY, 10)).pack(side="left", padx=(0, 8))
+
+        self._perf_mode_var = tk.StringVar(value=current_mode)
+        mode_options = ["auto-detect", "minimum", "recommended"]
+        if hw.get("nvidia_gpu_name"):
+            mode_options.append("power")
+        if current_mode == "custom":
+            mode_options.append("custom")
+
+        mode_combo = ttk.Combobox(
+            mode_frame,
+            textvariable=self._perf_mode_var,
+            values=[m.replace("-", " ").title() for m in mode_options],
+            state="readonly",
+            width=22,
+        )
+        mode_combo.pack(side="left")
+        mode_combo.bind("<<ComboboxSelected>>", self._on_perf_mode_change)
+
+        # Advanced expander
+        self._adv_expanded = tk.BooleanVar(value=(current_mode == "custom"))
+        self._adv_toggle_btn = ttk.Button(
+            parent, text="▶ Advanced (override individual settings)",
+            command=self._toggle_advanced_perf,
+        )
+        self._adv_toggle_btn.pack(anchor="w", pady=(4, 4))
+
+        self._adv_perf_frame = ttk.Frame(parent)
+        if self._adv_expanded.get():
+            self._adv_perf_frame.pack(fill="x", pady=(0, 8))
+            self._adv_toggle_btn.config(text="▼ Advanced (override individual settings)")
+
+        # Model size
+        msize_frame = ttk.Frame(self._adv_perf_frame)
+        msize_frame.pack(fill="x", pady=2)
+        ttk.Label(msize_frame, text="Model size:", font=(FONT_BODY, 9), width=18, anchor="w").pack(side="left")
+        self._model_size_var = tk.StringVar(value=self.config_data.get("model_size", "small"))
+        msize_combo = ttk.Combobox(
+            msize_frame, textvariable=self._model_size_var,
+            values=["tiny", "base", "small", "large-v3-turbo"],
+            state="readonly", width=18,
+        )
+        msize_combo.pack(side="left")
+        msize_combo.bind("<<ComboboxSelected>>", lambda e: self._on_advanced_change())
+
+        # CPU threads
+        thread_frame = ttk.Frame(self._adv_perf_frame)
+        thread_frame.pack(fill="x", pady=2)
+        ttk.Label(thread_frame, text="CPU threads:", font=(FONT_BODY, 9), width=18, anchor="w").pack(side="left")
+        self._cpu_threads_var = tk.IntVar(value=self.config_data.get("cpu_threads", 4))
+        threads_spin = ttk.Spinbox(
+            thread_frame, from_=1, to=16, textvariable=self._cpu_threads_var,
+            width=5, command=self._on_advanced_change,
+        )
+        threads_spin.pack(side="left")
+
+        # Process priority
+        prio_frame = ttk.Frame(self._adv_perf_frame)
+        prio_frame.pack(fill="x", pady=2)
+        ttk.Label(prio_frame, text="Process priority:", font=(FONT_BODY, 9), width=18, anchor="w").pack(side="left")
+        self._priority_var = tk.StringVar(value=self.config_data.get("process_priority", "above_normal"))
+        prio_combo = ttk.Combobox(
+            prio_frame, textvariable=self._priority_var,
+            values=["normal", "above_normal", "high"],
+            state="readonly", width=18,
+        )
+        prio_combo.pack(side="left")
+        prio_combo.bind("<<ComboboxSelected>>", lambda e: self._on_advanced_change())
+
+    def _toggle_advanced_perf(self):
+        """Show/hide the advanced controls."""
+        if self._adv_expanded.get():
+            self._adv_perf_frame.pack_forget()
+            self._adv_expanded.set(False)
+            self._adv_toggle_btn.config(text="▶ Advanced (override individual settings)")
+        else:
+            self._adv_perf_frame.pack(fill="x", pady=(0, 8))
+            self._adv_expanded.set(True)
+            self._adv_toggle_btn.config(text="▼ Advanced (override individual settings)")
+
+    def _on_perf_mode_change(self, event=None):
+        """User picked a tier from the dropdown - apply that tier's defaults."""
+        from system_check_constants import TIER_DEFAULTS
+
+        selected = self._perf_mode_var.get().lower().replace(" ", "-")
+        self.config_data["system_check_mode"] = selected
+
+        if selected == "auto-detect":
+            defaults = self._tier_result["defaults"]
+        elif selected == "custom":
+            # Don't change the advanced values - user is editing them directly
+            return
+        else:
+            # minimum / recommended / power
+            tier_key = selected.upper()
+            defaults = TIER_DEFAULTS.get(tier_key, {})
+
+        if defaults:
+            self.config_data["model_size"] = defaults.get("model_size", "small")
+            self.config_data["cpu_threads"] = defaults.get("cpu_threads", 4)
+            self.config_data["process_priority"] = defaults.get("process_priority", "above_normal")
+            self._model_size_var.set(self.config_data["model_size"])
+            self._cpu_threads_var.set(self.config_data["cpu_threads"])
+            self._priority_var.set(self.config_data["process_priority"])
+
+    def _on_advanced_change(self):
+        """User edited an Advanced control - flip mode to 'custom'."""
+        self._perf_mode_var.set("Custom")
+        self.config_data["system_check_mode"] = "custom"
+        self.config_data["model_size"] = self._model_size_var.get()
+        self.config_data["cpu_threads"] = int(self._cpu_threads_var.get())
+        self.config_data["process_priority"] = self._priority_var.get()
 
     def _get_voices(self):
         try:
