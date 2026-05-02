@@ -8,21 +8,7 @@
 #define CORES_MIN_RECOMMENDED 4
 #define RAM_MIN_RECOMMENDED_GB 8
 
-[Code]
-const
-  CPU_LOW_POWER_PATTERN_COUNT = 13;
-  CPU_LOW_POWER_PATTERNS: array[0..12] of String = (
-    'atom',
-    'celeron',
-    'pentium silver',
-    'pentium gold',
-    'pentium n',
-    ' n100',
-    ' n200',
-    ' n300',
-    ' n4000',
-    ' n5000',
-    ' n6000',
-    ' n95',
-    ' n97'
-  );
+; Pipe-delimited list of low-power CPU substring patterns. Consumed by
+; IsLowPowerCpu in system_check.iss via a Pos-based scan (PascalScript
+; const blocks don't support typed array constants).
+#define CPU_LOW_POWER_PATTERNS_PIPE "atom|celeron|pentium silver|pentium gold|pentium n| n100| n200| n300| n4000| n5000| n6000| n95| n97"

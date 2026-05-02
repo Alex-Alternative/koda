@@ -8,6 +8,12 @@
 ; Build: "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" koda.iss
 ; Requires: Inno Setup 6 — https://jrsoftware.org/isdl.php
 
+; Pull in tier-classification thresholds (auto-generated from
+; system_check_constants.py). Defines global #define symbols consumed
+; by system_check.iss inside [Code]. Must be #include'd at script top
+; scope so the #define's are visible to subsequent includes.
+#include "thresholds.iss"
+
 #define MyAppName "Koda"
 #define MyAppVersion "4.4.0-beta1"
 #define MyAppVersionNumeric "4.4.0.1"
@@ -116,8 +122,11 @@ Type: dirifempty; Name: "{app}\sounds"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+#include "system_check.iss"
+
 { ------------------------------------------------------------------ }
 { Custom wizard pages                                                  }
+{   Tier pages — BLOCKED hard-stop / MINIMUM soft-warn (conditional)  }
 {   Page 1 — Microphone guidance (informational)                      }
 {   Page 2 — Activation method: Hold vs Toggle                        }
 {   Page 3 — Transcription quality (small / base / tiny)              }
@@ -129,6 +138,11 @@ var
   HotkeyPage:    TInputOptionWizardPage;
   ModelPage:     TInputOptionWizardPage;
   FormulaPage:   TInputOptionWizardPage;
+  { Tier-classification pages — created conditionally in InitializeWizard }
+  BlockedPage:   TOutputMsgWizardPage;
+  MinimumPage:   TOutputMsgWizardPage;
+  PowerPage:     TWizardPage;
+  DetectedTier:  String;
 
 { Win32 API — count audio input devices (recording devices) without }
 { needing PortAudio or any helper exe. Returns 0 when no mic is set up. }
@@ -140,6 +154,41 @@ var
   MicMsg: String;
   DeviceCount: Cardinal;
 begin
+  { Classify hardware first — pages added below depend on tier }
+  DetectedTier := ClassifyTier;
+
+  { BLOCKED — hard-stop page; user must Cancel (forward nav blocked below) }
+  if DetectedTier = 'BLOCKED' then
+  begin
+    BlockedPage := CreateOutputMsgPage(
+      wpWelcome,
+      'System Requirements Not Met',
+      'Your PC does not meet the minimum requirements for Koda.',
+      'Koda needs:' + #13#10 +
+      '  - At least 2 GB of RAM' + #13#10 +
+      '  - At least 4 GB of free disk space' + #13#10 +
+      '  - Windows 10 (May 2020 update) or later' + #13#10 + #13#10 +
+      'Setup will close. Please upgrade your hardware or operating ' +
+      'system and try again.'
+    );
+  end;
+
+  { MINIMUM — soft-warn page; user can continue }
+  if DetectedTier = 'MINIMUM' then
+  begin
+    MinimumPage := CreateOutputMsgPage(
+      wpWelcome,
+      'Below Recommended Specs',
+      'Koda will work, but transcription will be slower than typical.',
+      'Your PC is below the recommended specs for Koda.' + #13#10 + #13#10 +
+      'Koda will configure itself for the best experience your PC can ' +
+      'deliver. Estimated transcription time: 12-25 seconds for a ' +
+      '60-second clip.' + #13#10 + #13#10 +
+      'You can change these settings later in Koda > Settings > ' +
+      'Performance.'
+    );
+  end;
+
   { PAGE 1 — Microphone guidance }
   DeviceCount := waveInGetNumDevs();
 
@@ -265,5 +314,28 @@ begin
         '}';
       SaveStringToFile(ConfigFile, ConfigContent, False);
     end;
+  end;
+end;
+
+{ Skip every page after the BLOCKED page so the user has nowhere to go but Cancel. }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if DetectedTier = 'BLOCKED' then
+  begin
+    if (BlockedPage <> nil) and (PageID > BlockedPage.ID) then
+      Result := True;
+  end;
+end;
+
+{ Block forward navigation while the user is on the BLOCKED page. }
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (DetectedTier = 'BLOCKED') and (BlockedPage <> nil) and
+     (CurPageID = BlockedPage.ID) then
+  begin
+    MsgBox('Setup cannot continue on this PC. Please cancel.', mbError, MB_OK);
+    Result := False;
   end;
 end;

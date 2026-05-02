@@ -14,10 +14,8 @@
   section. It must not contain its own [Code] header.
 }
 
-{ Win32 imports }
-function GlobalMemoryStatusEx(lpBuffer: TMemoryStatusEx): BOOL;
-  external 'GlobalMemoryStatusEx@kernel32.dll stdcall';
-
+{ Win32 types — must be declared before external function decls that reference them.
+  PascalScript doesn't ship TMemoryStatusEx or TSystemInfo, so we declare both. }
 type
   TMemoryStatusEx = record
     dwLength: DWORD;
@@ -30,6 +28,27 @@ type
     ullAvailVirtual: Int64;
     ullAvailExtendedVirtual: Int64;
   end;
+
+  TSystemInfoLocal = record
+    wProcessorArchitecture: Word;
+    wReserved: Word;
+    dwPageSize: DWORD;
+    lpMinimumApplicationAddress: DWORD;
+    lpMaximumApplicationAddress: DWORD;
+    dwActiveProcessorMask: DWORD;
+    dwNumberOfProcessors: DWORD;
+    dwProcessorType: DWORD;
+    dwAllocationGranularity: DWORD;
+    wProcessorLevel: Word;
+    wProcessorRevision: Word;
+  end;
+
+{ Win32 imports }
+function GlobalMemoryStatusEx(var lpBuffer: TMemoryStatusEx): BOOL;
+  external 'GlobalMemoryStatusEx@kernel32.dll stdcall';
+
+procedure GetNativeSystemInfo(var lpSystemInfo: TSystemInfoLocal);
+  external 'GetNativeSystemInfo@kernel32.dll stdcall';
 
 { Detection helpers }
 
@@ -46,10 +65,10 @@ end;
 
 function DetectCores: Integer;
 var
-  SysInfo: TSystemInfo;
+  SysInfo: TSystemInfoLocal;
 begin
-  GetSystemInfo(SysInfo);
-  Result := SysInfo.dwNumberOfProcessors;
+  GetNativeSystemInfo(SysInfo);
+  Result := Integer(SysInfo.dwNumberOfProcessors);
 end;
 
 function DetectFreeDiskGB: Double;
@@ -84,33 +103,57 @@ end;
 
 function DetectNvidiaGpuPresent: Boolean;
 var
-  ResultCode: Integer;
+  ResultCode, FSize: Integer;
   TempPath: String;
+  Contents: AnsiString;
 begin
   { Run nvidia-smi, redirect output to a temp file. If it exists and is
-    non-empty, NVIDIA GPU is present. }
+    non-empty, NVIDIA GPU is present. PascalScript's FileSize takes two
+    args (name + var size), so we just LoadStringFromFile and look at
+    Length -- simpler and avoids the temp-path-with-spaces nested-quote bug. }
   TempPath := ExpandConstant('{tmp}\nvidia_check.txt');
   Exec(
     ExpandConstant('{cmd}'),
-    '/c "nvidia-smi --query-gpu=name --format=csv,noheader > "' + TempPath + '" 2>NUL"',
+    '/c nvidia-smi --query-gpu=name --format=csv,noheader > "' + TempPath + '" 2>NUL',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode
   );
-  Result := FileExists(TempPath) and (FileSize(TempPath) > 5);
+  FSize := 0;
+  if FileExists(TempPath) and LoadStringFromFile(TempPath, Contents) then
+    FSize := Length(Trim(String(Contents)));
+  Result := FSize > 0;
 end;
 
 function IsLowPowerCpu(const CpuName: String): Boolean;
 var
-  i: Integer;
-  NameLower: String;
+  Patterns, NameLower, Pattern: String;
+  PipeIdx: Integer;
 begin
+  { CPU_LOW_POWER_PATTERNS_PIPE is a #define from thresholds.iss — pipe-
+    delimited substrings to scan for. PascalScript const blocks don't
+    support typed array constants, so we emit a delimited string and
+    walk it here. }
+  Patterns := '{#CPU_LOW_POWER_PATTERNS_PIPE}';
   NameLower := Lowercase(CpuName);
   Result := False;
-  for i := 0 to CPU_LOW_POWER_PATTERN_COUNT - 1 do
-    if Pos(CPU_LOW_POWER_PATTERNS[i], NameLower) > 0 then
+  while Length(Patterns) > 0 do
+  begin
+    PipeIdx := Pos('|', Patterns);
+    if PipeIdx = 0 then
+    begin
+      Pattern := Patterns;
+      Patterns := '';
+    end
+    else
+    begin
+      Pattern := Copy(Patterns, 1, PipeIdx - 1);
+      Patterns := Copy(Patterns, PipeIdx + 1, MaxInt);
+    end;
+    if (Pattern <> '') and (Pos(Pattern, NameLower) > 0) then
     begin
       Result := True;
       Exit;
     end;
+  end;
 end;
 
 { Tier classifier — returns one of: 'BLOCKED', 'MINIMUM', 'RECOMMENDED', 'POWER' }
