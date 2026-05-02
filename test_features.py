@@ -3245,5 +3245,49 @@ class TestPromptAssistCredentials(unittest.TestCase):
         self.assertFalse(save_api_key("provider", ""))
 
 
+# ============================================================
+# System hardware classification
+# ============================================================
+
+class TestSystemCheckBlocked(unittest.TestCase):
+    """BLOCKED tier — install is refused for these conditions."""
+
+    def test_blocked_low_ram(self):
+        from system_check import classify
+        with patch("system_check._detect_ram_gb", return_value=1.5), \
+             patch("system_check._detect_cores", return_value=8), \
+             patch("system_check._detect_free_disk_gb", return_value=100), \
+             patch("system_check._detect_win_build", return_value=22000), \
+             patch("system_check._detect_cpu_name", return_value="Intel i7-12700"), \
+             patch("system_check._detect_nvidia_gpu", return_value=None):
+            result = classify()
+            self.assertEqual(result["tier"], "BLOCKED")
+            self.assertIn("ram_below_minimum", result["reasons"])
+
+    def test_blocked_low_disk(self):
+        from system_check import classify
+        with patch("system_check._detect_ram_gb", return_value=16), \
+             patch("system_check._detect_cores", return_value=8), \
+             patch("system_check._detect_free_disk_gb", return_value=2), \
+             patch("system_check._detect_win_build", return_value=22000), \
+             patch("system_check._detect_cpu_name", return_value="Intel i7-12700"), \
+             patch("system_check._detect_nvidia_gpu", return_value=None):
+            result = classify()
+            self.assertEqual(result["tier"], "BLOCKED")
+            self.assertIn("disk_below_minimum", result["reasons"])
+
+    def test_blocked_old_windows(self):
+        from system_check import classify
+        with patch("system_check._detect_ram_gb", return_value=16), \
+             patch("system_check._detect_cores", return_value=8), \
+             patch("system_check._detect_free_disk_gb", return_value=100), \
+             patch("system_check._detect_win_build", return_value=18000), \
+             patch("system_check._detect_cpu_name", return_value="Intel i7-12700"), \
+             patch("system_check._detect_nvidia_gpu", return_value=None):
+            result = classify()
+            self.assertEqual(result["tier"], "BLOCKED")
+            self.assertIn("windows_too_old", result["reasons"])
+
+
 if __name__ == "__main__":
     unittest.main()
