@@ -113,6 +113,9 @@ model = None
 tray_icon = None
 stream = None
 config = {}
+# Snapshot of system_check_tier captured BEFORE startup re-detection so the
+# Power Mode balloon (fired in run_setup) can see whether tier changed.
+_tier_before_refresh = "RECOMMENDED"
 vad_model = None
 last_speech_time = 0
 recording_mode = "dictation"
@@ -365,6 +368,20 @@ def _discover_bundled_models(base_dir):
     )
 
 
+def _make_model_download_progress_cb(model_size):
+    """Throttle tray-title updates to ~5% increments so a 1.5 GB download
+    doesn't issue 1500 update_tray() calls."""
+    last_pct = [-5]
+    def cb(downloaded, total):
+        if total <= 0:
+            return
+        pct = int(100 * downloaded / total)
+        if pct >= last_pct[0] + 5:
+            update_tray("#3498db", f"Koda: Downloading {model_size} model... {pct}%")
+            last_pct[0] = pct
+    return cb
+
+
 def load_whisper_model():
     global model
     from faster_whisper import WhisperModel
@@ -384,11 +401,38 @@ def load_whisper_model():
     cpu_threads = int(config.get("cpu_threads", 4))
 
     def _load(m_size, dev, c_type):
+        # 1. PyInstaller-bundled snapshot (e.g. _model_small)
         b = os.path.join(base_dir, f"_model_{m_size}")
         if os.path.isdir(b):
             logger.debug("Loading bundled model from: %s", b)
             return WhisperModel(b, device=dev, compute_type=c_type, cpu_threads=cpu_threads)
-        logger.debug("Bundled model not found at %s — loading by name (may download)", b)
+
+        # 2. Previously-downloaded snapshot in CONFIG_DIR/models/<size>/
+        #    (mirrored from Moonhawk80/koda whisper-models-v1 release)
+        from model_downloader import (
+            MIRRORED_MODELS, download_and_extract, is_available, model_dir_for,
+        )
+        if is_available(m_size, CONFIG_DIR):
+            mirrored_dir = model_dir_for(m_size, CONFIG_DIR)
+            logger.debug("Loading mirrored model from: %s", mirrored_dir)
+            return WhisperModel(mirrored_dir, device=dev, compute_type=c_type, cpu_threads=cpu_threads)
+
+        # 3. Mirror exists for this size but not on disk — download it.
+        #    faster-whisper's built-in HF resolution is broken for some sizes
+        #    (e.g. large-v3-turbo), so the mirror is the authoritative source
+        #    when present.
+        if m_size in MIRRORED_MODELS:
+            logger.info("Downloading %s from Koda mirror...", m_size)
+            update_tray("#3498db", f"Koda: Downloading {m_size} model (~1.5 GB)...")
+            mirrored_dir = download_and_extract(
+                m_size, CONFIG_DIR,
+                progress_cb=_make_model_download_progress_cb(m_size),
+            )
+            update_tray("#3498db", f"Koda: Loading {m_size} model...")
+            return WhisperModel(mirrored_dir, device=dev, compute_type=c_type, cpu_threads=cpu_threads)
+
+        # 4. No bundle, no mirror — fall through to faster-whisper's HF resolution
+        logger.debug("Bundled model not found at %s — loading by name (may download from HF)", b)
         return WhisperModel(m_size, device=dev, compute_type=c_type, cpu_threads=cpu_threads)
 
     def _try_bundled_fallback(original_error):
@@ -2072,26 +2116,65 @@ def _on_update_check_result(latest_version, download_url):
         logger.info("Update available: v%s (download: %s)", latest_version, download_url)
 
 
-def _maybe_show_power_unlock_balloon():
-    """One-time tray balloon when a new NVIDIA GPU appears between runs.
+def _refresh_tier_on_startup(config) -> str:
+    """Re-classify hardware on every startup. Auto-detect users get the tier
+    (and bundled defaults) updated silently when their hardware changes —
+    e.g., a RAM upgrade jumps them from MINIMUM to RECOMMENDED, or a new
+    NVIDIA GPU jumps them from RECOMMENDED to POWER. Manual override modes
+    are left alone; detection failure is non-fatal.
 
-    Auto-detect users only — manual overrides keep their chosen tier.
-    Stamps the new tier and a flag so the balloon never re-fires.
+    Always sync the four tier-bound fields (model_size, compute_type,
+    cpu_threads, process_priority) against the tier defaults — not just
+    when the tier changes. This catches version drift (e.g. an older
+    installer that didn't write compute_type, leaving POWER tier silently
+    on int8/CPU) and corrects it on next startup.
+
+    Returns the tier that was stored before this refresh ran. Callers like
+    _maybe_show_power_unlock_balloon use that snapshot to detect transitions
+    that this function would otherwise silently absorb.
+    """
+    old_tier = config.get("system_check_tier", "RECOMMENDED")
+    if config.get("system_check_mode", "auto-detect") != "auto-detect":
+        return old_tier
+    try:
+        from system_check import classify
+        result = classify()
+    except Exception:
+        return old_tier
+    new_tier = result.get("tier")
+    defaults = result.get("defaults", {})
+
+    changed = False
+    if new_tier and new_tier != old_tier:
+        config["system_check_tier"] = new_tier
+        changed = True
+    for key in ("model_size", "compute_type", "cpu_threads", "process_priority"):
+        if key in defaults and config.get(key) != defaults[key]:
+            config[key] = defaults[key]
+            changed = True
+    if changed:
+        save_config(config)
+    return old_tier
+
+
+def _maybe_show_power_unlock_balloon(old_tier):
+    """One-time tray balloon when this startup transitioned to POWER.
+
+    _refresh_tier_on_startup has already stamped the new tier; we just need
+    to detect the transition (old_tier was non-POWER, current tier is POWER)
+    and fire the cue. The balloon flag is the source of truth for 'has the
+    user been notified about Power Mode' — fresh POWER installs have it
+    pre-set by the installer's celebration-page write, so we never
+    double-celebrate.
     """
     if config.get("power_mode_balloon_shown", False):
         return
     if config.get("system_check_mode", "auto-detect") != "auto-detect":
         return
-    if config.get("system_check_tier", "RECOMMENDED") == "POWER":
+    if old_tier == "POWER":
         return
-    try:
-        from system_check import classify
-        result = classify()
-    except Exception:
+    if config.get("system_check_tier") != "POWER":
         return
-    if result.get("tier") != "POWER":
-        return
-    config["system_check_tier"] = "POWER"
     config["power_mode_balloon_shown"] = True
     save_config(config)
     if tray_icon:
@@ -2169,7 +2252,7 @@ def run_setup():
         except Exception:
             pass
     flush_pending_error_notifications()
-    _maybe_show_power_unlock_balloon()
+    _maybe_show_power_unlock_balloon(_tier_before_refresh)
 
     # First-run welcome — show hotkey cheat sheet on first launch
     _first_run_path = os.path.join(_DATA_DIR, ".koda_initialized")
@@ -2277,6 +2360,13 @@ def main():
 
     config = load_config()
     config["custom_vocabulary"] = _load_custom_words()
+
+    # Refresh tier from current hardware before applying priority — a RAM /
+    # CPU / GPU change since last run may have moved the user across tiers.
+    # Snapshot the pre-refresh tier so the GPU-appeared balloon (deferred to
+    # run_setup) can detect the transition this refresh would otherwise hide.
+    global _tier_before_refresh
+    _tier_before_refresh = _refresh_tier_on_startup(config)
 
     # Raise scheduling priority before any CPU-heavy work (model load, inference).
     # Keeps Koda responsive when the user also has many Node/Electron sessions open.

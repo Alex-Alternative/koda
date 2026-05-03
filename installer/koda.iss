@@ -201,13 +201,14 @@ begin
   mciSendString('play kodasuccess', '', 0, 0);
 end;
 
-{ Compose the Power Mode celebration page — banner bitmap + GPU name
-  label + body copy + Continue/Standard radio choice. Called once from
-  InitializeWizard when DetectedTier = 'POWER'. }
+{ Compose the Power Mode celebration page — banner bitmap (carries the
+  POWER MODE / Hardware acceleration messaging itself) + dim machine-
+  specific GPU name label + Continue/Standard radio choice. Called once
+  from InitializeWizard when DetectedTier = 'POWER'. }
 procedure CreatePowerPageContent(Page: TWizardPage);
 var
   Banner: TBitmapImage;
-  GpuLabel, BodyLabel: TNewStaticText;
+  GpuLabel: TNewStaticText;
   StandardRadio: TNewRadioButton;
 begin
   ExtractTemporaryFile('power_banner.bmp');
@@ -220,33 +221,26 @@ begin
   Banner.Height := 300;
   Banner.Bitmap.LoadFromFile(ExpandConstant('{tmp}\power_banner.bmp'));
 
-  BodyLabel := TNewStaticText.Create(Page);
-  BodyLabel.Parent := Page.Surface;
-  BodyLabel.Caption := 'Near-instant transcription. Larger, more accurate model.';
-  BodyLabel.Left := 0;
-  BodyLabel.Top := 312;
-  BodyLabel.Width := Page.SurfaceWidth;
-  BodyLabel.AutoSize := False;
-  BodyLabel.Font.Style := [fsBold];
-
+  { Dim machine-specific GPU name — banner can't carry this dynamically }
   GpuLabel := TNewStaticText.Create(Page);
   GpuLabel.Parent := Page.Surface;
   GpuLabel.Caption := 'Detected: ' + GetNvidiaGpuNameForDisplay;
   GpuLabel.Left := 0;
-  GpuLabel.Top := 334;
+  GpuLabel.Top := 314;
   GpuLabel.Width := Page.SurfaceWidth;
+  GpuLabel.Font.Color := $00808080;
 
   PowerPageContinueRadio := TNewRadioButton.Create(Page);
   PowerPageContinueRadio.Parent := Page.Surface;
   PowerPageContinueRadio.Caption := 'Continue with Power Mode';
-  PowerPageContinueRadio.Top := 372;
+  PowerPageContinueRadio.Top := 348;
   PowerPageContinueRadio.Width := Page.SurfaceWidth;
   PowerPageContinueRadio.Checked := True;
 
   StandardRadio := TNewRadioButton.Create(Page);
   StandardRadio.Parent := Page.Surface;
   StandardRadio.Caption := 'Use Standard Mode instead';
-  StandardRadio.Top := 397;
+  StandardRadio.Top := 373;
   StandardRadio.Width := Page.SurfaceWidth;
 end;
 
@@ -417,41 +411,51 @@ begin
                  CloseQuoteIdx - 1);
 end;
 
-{ Build the tier-aware config.json string. Tier dictates cpu_threads and
-  process_priority; ModelSize is decided by the caller (POWER/MINIMUM
-  override the wizard pick, RECOMMENDED honors it). }
+{ Build the tier-aware config.json string. Tier dictates cpu_threads,
+  process_priority, AND compute_type (POWER => float16 so ctranslate2
+  loads on CUDA — omitting it left the field blank, the Python loader
+  defaulted to int8, and Power Mode silently ran on CPU at 5+ sec/word).
+  ModelSize is decided by the caller (POWER/MINIMUM override the wizard
+  pick, RECOMMENDED honors it). BalloonShown is 'true' when the wizard
+  already celebrated Power Mode (so the runtime GPU-appeared balloon
+  never double-fires) and 'false' otherwise. }
 function BuildTierAwareConfigJson(
-  const Tier, HotkeyMode, ModelSize, FormulaEnabled: String
+  const Tier, HotkeyMode, ModelSize, FormulaEnabled, BalloonShown: String
 ): String;
 var
-  CpuThreads, ProcessPriority: String;
+  CpuThreads, ProcessPriority, ComputeType: String;
 begin
   { PascalScript `case` does not support String selectors — use if/elseif. }
   if Tier = 'POWER' then
   begin
     CpuThreads := '4';
     ProcessPriority := 'above_normal';
+    ComputeType := 'float16';
   end
   else if Tier = 'MINIMUM' then
   begin
     CpuThreads := '2';
     ProcessPriority := 'normal';
+    ComputeType := 'int8';
   end
   else
   begin
     { RECOMMENDED or fallback }
     CpuThreads := '4';
     ProcessPriority := 'above_normal';
+    ComputeType := 'int8';
   end;
 
   Result :=
     '{' + #13#10 +
     '  "hotkey_mode": "' + HotkeyMode + '",' + #13#10 +
     '  "model_size": "' + ModelSize + '",' + #13#10 +
+    '  "compute_type": "' + ComputeType + '",' + #13#10 +
     '  "cpu_threads": ' + CpuThreads + ',' + #13#10 +
     '  "process_priority": "' + ProcessPriority + '",' + #13#10 +
     '  "system_check_tier": "' + Tier + '",' + #13#10 +
     '  "system_check_mode": "auto-detect",' + #13#10 +
+    '  "power_mode_balloon_shown": ' + BalloonShown + ',' + #13#10 +
     '  "formula_mode": {"enabled": ' + FormulaEnabled +
                        ', "auto_detect_apps": true}' + #13#10 +
     '}';
@@ -460,7 +464,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   HotkeyMode, ModelSize: String;
-  FormulaEnabled: String;
+  FormulaEnabled, BalloonShown: String;
   ConfigDir, ConfigFile, ConfigContent: String;
   TempJsonPath: String;
   JsonText: AnsiString;  { LoadStringFromFile requires AnsiString in Unicode Inno }
@@ -540,6 +544,16 @@ begin
     else
       FormulaEnabled := 'false';
 
+    { Pre-set the GPU-appeared balloon flag when the wizard already
+      celebrated Power Mode (final tier == POWER), so the runtime
+      balloon never double-fires on first launch. Anything else leaves
+      the flag false so the balloon can fire later if the user adds a
+      GPU post-install. }
+    if TierFromJson = 'POWER' then
+      BalloonShown := 'true'
+    else
+      BalloonShown := 'false';
+
     { Write tier-aware config.json to %APPDATA%\Koda\ — only on fresh install }
     ConfigDir := ExpandConstant('{userappdata}') + '\Koda';
     ForceDirectories(ConfigDir);
@@ -548,7 +562,7 @@ begin
     if not FileExists(ConfigFile) then
     begin
       ConfigContent := BuildTierAwareConfigJson(
-        TierFromJson, HotkeyMode, ModelSize, FormulaEnabled
+        TierFromJson, HotkeyMode, ModelSize, FormulaEnabled, BalloonShown
       );
       SaveStringToFile(ConfigFile, ConfigContent, False);
     end;
