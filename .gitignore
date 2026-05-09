@@ -24,5 +24,8 @@ koda_stats.db
 .migrate-safely/
 koda_preview.png
 
+# Personal dev scaffolding — not project artifacts, kept on disk per developer
+dev_test_overlay.py
+
 # Mirrored Whisper model snapshots downloaded at runtime (Koda models dir in dev mode)
 models/
