@@ -115,10 +115,6 @@ def _action_terminal_clear_line():
     """
     keyboard.send("escape")
 
-def _action_terminal_kill_end():
-    """Kill from cursor to end of line (readline Ctrl+K)."""
-    keyboard.send("ctrl+k")
-
 def _action_terminal_kill_bol():
     """Clear the current input line via PSReadLine RevertLine (Escape).
     Escape = RevertLine in PSReadLine Windows mode (the default).
