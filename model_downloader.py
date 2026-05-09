@@ -20,7 +20,7 @@ import tarfile
 import tempfile
 import urllib.request
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("koda")
 
 # model_size -> tarball download URL on our GitHub release. Add a row here
 # when we mirror a new model. The release tag is intentionally separate from
