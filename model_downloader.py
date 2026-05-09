@@ -71,7 +71,7 @@ def download_and_extract(model_size: str, root: str, progress_cb=None) -> str:
     os.close(fd)
     try:
         logger.info("Downloading %s from %s", model_size, url)
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url, timeout=30) as response:
             total = int(response.headers.get("Content-Length", 0))
             chunk_size = 1024 * 1024  # 1 MB
             downloaded = 0
