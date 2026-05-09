@@ -66,7 +66,7 @@ def _normalize(text: str) -> str:
     return t
 
 
-def convert_to_formula(text: str, llm_enabled: bool = False, llm_config: dict = None) -> str | None:
+def convert_to_formula(text: str, llm_enabled: bool = False, llm_config: dict | None = None) -> str | None:
     """
     Convert natural language text to an Excel formula.
 
