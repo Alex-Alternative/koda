@@ -56,7 +56,7 @@ def _check_update_worker(current_version, callback):
             if callback:
                 callback(None, None)
     except Exception as e:
-        logger.debug("Update check failed: %s", e)
+        logger.info("Update check failed: %s", e)
         if callback:
             callback(None, None)
 
