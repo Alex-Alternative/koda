@@ -265,23 +265,32 @@
     <div class="header">
       <h1>Koda User Guide</h1>
       <div class="subtitle">Push-to-talk voice transcription for Windows</div>
-      <div class="badge">Version 4.3.0</div>
+      <div class="badge">Version 4.4.0-beta1</div>
     </div>
 
     <div class="content">
 
       <h2>What is Koda?</h2>
-      <p>Koda is a push-to-talk voice transcription tool for Windows. Press a hotkey, speak, and your words are instantly typed into whatever you're working in — emails, Slack, Word, Excel, ChatGPT, anything.</p>
+      <p>Koda is a push-to-talk voice transcription tool for Windows. Press a hotkey, speak, and your words are instantly typed into whatever you're working in — emails, Slack, Word, Excel, ChatGPT, Claude, anything.</p>
       <p>No clicking a mic button. No switching apps. Just talk.</p>
 
       <h2>Installation</h2>
       <div class="steps">
-        <div class="step"><div class="step-num">1</div><div class="step-text">Double-click <strong>KodaSetup-4.3.0.exe</strong></div></div>
+        <div class="step"><div class="step-num">1</div><div class="step-text">Double-click <strong>KodaSetup-4.4.0-beta1.exe</strong></div></div>
         <div class="step"><div class="step-num">2</div><div class="step-text">If Windows shows a "protected your PC" warning, click <strong>More info → Run anyway</strong></div></div>
         <div class="step"><div class="step-num">3</div><div class="step-text">Follow the installer wizard — takes about 2 minutes</div></div>
         <div class="step"><div class="step-num">4</div><div class="step-text">Koda launches automatically when done</div></div>
       </div>
       <div class="tip"><strong>Look for the tray icon</strong> — Koda appears in the bottom-right corner of your screen near the clock. That's how you know it's running.</div>
+
+      <h3>Hardware check during install</h3>
+      <p>The installer runs a quick hardware check and picks defaults that match your machine — speech model size, CPU threads, process priority. You don't need to know what any of that means. Most users see one of these:</p>
+      <ul>
+        <li><strong>Recommended</strong> — typical laptop or desktop, balanced speed and accuracy</li>
+        <li><strong>Minimum</strong> — older or low-RAM machine, lighter model for responsiveness</li>
+        <li><strong>Power Mode</strong> — NVIDIA GPU detected (RTX or similar), unlocks near-instant transcription with a larger, more accurate model. You'll see a short celebration page in the installer if this applies to you.</li>
+      </ul>
+      <p>You can change any of this later in <strong>Settings → Performance</strong> if you want to tune it manually.</p>
 
       <h2>Basic Usage</h2>
       <h3>Dictation — type by speaking</h3>
@@ -305,45 +314,103 @@
         </ul>
       </div>
 
-      <h2>All Hotkeys</h2>
+      <h2>Hotkey Reference</h2>
       <div class="hotkey-grid">
         <div class="header-row">Hotkey</div>
         <div class="header-row">What it does</div>
         <div class="cell"><kbd>Ctrl + Space</kbd></div>
         <div class="cell">Hold to dictate, release to paste. In a terminal window, spoken symbols are converted automatically (see Terminal Mode below)</div>
         <div class="cell"><kbd>Ctrl + F9</kbd></div>
-        <div class="cell">In Excel or Google Sheets — Formula Mode (speak a formula, navigate, or create a table). Everywhere else — Prompt Assist (speak an idea, get a structured prompt for ChatGPT or Claude)</div>
+        <div class="cell">In Excel or Google Sheets — Formula Mode (speak a formula, navigate, or create a table). Everywhere else — Prompt Assist (voice Q&amp;A → structured prompt for ChatGPT or Claude)</div>
+        <div class="cell"><kbd>F8</kbd></div>
+        <div class="cell">Voice command mode — speak editing commands like "select all", "undo", "bold"</div>
         <div class="cell"><kbd>F7</kbd></div>
         <div class="cell">Correction — undoes your last paste and starts a new recording so you can try again</div>
         <div class="cell"><kbd>F6</kbd></div>
         <div class="cell">Read back — Koda reads your last transcription aloud</div>
-        <div class="cell"><kbd>F8</kbd></div>
-        <div class="cell">Voice command mode — speak editing commands like "select all", "undo", "bold"</div>
+        <div class="cell"><kbd>F5</kbd></div>
+        <div class="cell">Read back the text you currently have selected</div>
       </div>
+
+      <h2>Prompt Assist — Talk to an AI without typing</h2>
+      <p>Press <kbd>Ctrl + F9</kbd> anywhere outside Excel or Google Sheets. Koda starts a quick voice conversation that turns your spoken idea into a clean, structured prompt for ChatGPT, Claude, or any other AI tool.</p>
+
+      <h3>How it works</h3>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><div class="step-text"><strong>You press Ctrl + F9.</strong> Koda speaks the opener: <em>"What are we working on with AI today?"</em></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-text"><strong>You answer with the task.</strong> Hold <kbd>Ctrl + F9</kbd> again and say what you want — "draft a follow-up email", "write a Python script that…", "explain this code".</div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Koda asks for context.</strong> Release the hotkey, and Koda asks one short follow-up to fill in any background.</div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-text"><strong>You answer with context.</strong> Hold <kbd>Ctrl + F9</kbd> again and speak the details.</div></div>
+        <div class="step"><div class="step-num">5</div><div class="step-text"><strong>Koda previews the assembled prompt.</strong> A small Atlas Navy overlay appears showing the final structured prompt.</div></div>
+        <div class="step"><div class="step-num">6</div><div class="step-text"><strong>Confirm or cancel.</strong> Say <strong>"send"</strong> (or press the listed hotkey) to paste it into your active window. Say <strong>"cancel"</strong> to discard.</div></div>
+      </div>
+      <p>The whole exchange is voice-only — you never touch the keyboard between hotkey presses.</p>
+
+      <h3>When it's useful</h3>
+      <ul>
+        <li>Drafting prompts at the start of a long AI session, when you want the model to understand the task properly</li>
+        <li>When you have a half-formed idea and want it cleaned up before sending</li>
+        <li>Hands-free workflow on a long call or while reading reference material</li>
+      </ul>
+      <div class="tip">If you don't want the voice Q&amp;A and prefer to just dictate text directly into the chat window, use <kbd>Ctrl + Space</kbd> instead.</div>
+
+      <h2>Polish — Clean up dictation with AI</h2>
+      <p><strong>Polish</strong> is an optional pass that fixes filler words, run-on sentences, and grammar in your transcribed text using a local AI model. It is <strong>off by default</strong> and requires a one-time setup.</p>
+
+      <h3>Two ways to use it</h3>
+      <ul>
+        <li><strong>In Prompt Assist (Ctrl + F9)</strong> — Polish is built into the flow. Your raw answers are turned into a tidy structured prompt automatically.</li>
+        <li><strong>In regular dictation (Ctrl + Space)</strong> — Off by default. Turn it on under <strong>Settings → Advanced → Polish</strong> if you want every transcription cleaned up before paste.</li>
+      </ul>
+
+      <h3>Setup</h3>
+      <p>You need one of:</p>
+      <ul>
+        <li><strong><a href="https://ollama.com" target="_blank">Ollama</a></strong> — free, local, no cloud. Install it, then run <code>ollama pull llama3.2:1b</code> in a terminal once. Koda will detect it automatically.</li>
+        <li><strong>An API key</strong> — bring your own OpenAI or Anthropic key. Add it under Settings → Advanced → Polish → API key.</li>
+      </ul>
+      <p>Without one of these set up, Polish stays off and dictation pastes your raw transcription.</p>
 
       <h2>System Tray Menu</h2>
       <p>Right-click the Koda tray icon for options:</p>
       <ul>
-        <li><strong>Settings</strong> — change hotkeys, microphone, model quality, and more</li>
+        <li><strong>Settings</strong> — change hotkeys, microphone, performance tier, Polish, and more</li>
         <li><strong>History</strong> — see your recent transcriptions</li>
+        <li><strong>Stats</strong> — usage stats (words transcribed, sessions, time saved)</li>
         <li><strong>Pause / Resume</strong> — temporarily disable Koda</li>
         <li><strong>Quit</strong> — close Koda</li>
       </ul>
+      <div class="tip">GPU users see a <strong>Power Mode</strong> badge in the tooltip when you hover over the tray icon.</div>
 
       <h2>Settings</h2>
       <p>Open Settings by right-clicking the tray icon → <strong>Settings</strong>.</p>
       <table class="mic-table">
         <tr>
-          <th>Setting</th>
-          <th>What it does</th>
+          <th>Section</th>
+          <th>What's in it</th>
         </tr>
-        <tr><td>Hotkey mode</td><td><strong>Hold</strong> (default) — hold key while speaking. <strong>Toggle</strong> — press once to start, again to stop</td></tr>
-        <tr><td>Model quality</td><td><strong>Fast</strong> (tiny), <strong>Balanced</strong> (base), <strong>Accurate</strong> (small, default)</td></tr>
-        <tr><td>Microphone</td><td>Choose which mic Koda listens to</td></tr>
-        <tr><td>Remove filler words</td><td>Automatically removes "um", "uh", "like" from transcriptions</td></tr>
-        <tr><td>Sound effects</td><td>Audio cues when recording starts and stops</td></tr>
+        <tr><td><strong>Hotkeys</strong></td><td>Remap Ctrl+Space, Ctrl+F9, F6, F7, F8, F5. Switch between Hold and Toggle modes.</td></tr>
+        <tr><td><strong>Audio</strong></td><td>Microphone selection, VAD silence timeout, RMS threshold (for noisy environments).</td></tr>
+        <tr><td><strong>Performance</strong></td><td>Hardware tier dropdown — Auto-detect (default), Custom, Minimum, Recommended, Power. Advanced expander shows the underlying model size, CPU threads, process priority, compute type.</td></tr>
+        <tr><td><strong>Polish</strong></td><td>Turn AI polish on/off for regular dictation. Pick Ollama or BYO API provider. Manage saved API keys.</td></tr>
+        <tr><td><strong>Voice</strong></td><td>TTS voice and speech rate (used for Prompt Assist opener and read-back).</td></tr>
+        <tr><td><strong>Profiles</strong></td><td>Switch between dictation profiles (e.g. "Code", "Email") with different post-processing rules.</td></tr>
+        <tr><td><strong>Custom Words</strong></td><td>Words Whisper gets wrong consistently — add corrections here.</td></tr>
       </table>
-      <div class="tip"><strong>Save behavior:</strong> Clicking Save applies most changes instantly and closes the window. If you change something that needs a full restart (a hotkey, the model, or the microphone), Koda will show a small message telling you what to relaunch for.</div>
+
+      <h3>Performance tier — what each one means</h3>
+      <table class="mic-table">
+        <tr>
+          <th>Tier</th>
+          <th>Use it for</th>
+          <th>What it picks</th>
+        </tr>
+        <tr><td><strong>Auto-detect</strong></td><td>Most users</td><td>Re-runs the hardware check each time Koda starts. If you upgrade your machine, Koda picks it up automatically.</td></tr>
+        <tr><td><strong>Custom</strong></td><td>You've tuned values manually and don't want them overwritten</td><td>Whatever you've set; Koda won't change them.</td></tr>
+        <tr><td><strong>Minimum</strong></td><td>Older / low-RAM machine</td><td><code>tiny</code> model, 2 threads, normal priority. Fast but less accurate.</td></tr>
+        <tr><td><strong>Recommended</strong></td><td>Typical modern PC</td><td><code>small</code> model, 4 threads, above-normal priority. Balanced.</td></tr>
+        <tr><td><strong>Power</strong></td><td>NVIDIA GPU (RTX-class)</td><td><code>large-v3-turbo</code> model on CUDA float16, near-instant transcription. Auto-downloads the model on first use (~1.5 GB, one-time).</td></tr>
+      </table>
 
       <h2>Microphone Guide</h2>
       <p>You don't need an expensive microphone. Here's what to expect from each type:</p>
@@ -371,6 +438,7 @@
       </table>
       <div class="tip"><strong>Biggest factor:</strong> A quiet environment matters more than mic quality. Background noise reduces accuracy more than anything else.</div>
       <div class="warning"><strong>Make sure your mic is set as the default recording device in Windows:</strong><br>Right-click the speaker icon → Sound settings → Choose your input device</div>
+      <p>If background noise is a chronic problem, lower the <strong>VAD RMS threshold</strong> in Settings → Audio so Koda doesn't cut off mid-sentence.</p>
 
       <h2>Formula Mode (Excel &amp; Google Sheets)</h2>
       <p>Koda automatically detects when Excel or Google Sheets is your active window. No setup or toggle needed — just press <kbd>Ctrl + F9</kbd> and describe the formula you want.</p>
@@ -486,7 +554,7 @@
         <tr><td>create a table with columns Name Date Amount Status</td><td>Writes those headers at the active cell and creates the table</td></tr>
       </table>
 
-      <div class="tip"><strong>Complex formulas:</strong> Install <a href="https://ollama.com" target="_blank">Ollama</a> (free, runs locally) and enable <strong>LLM Polish</strong> in Settings → Advanced. Run <code>ollama pull phi3:mini</code> once to set it up. Koda will use the AI model to handle anything its built-in parser can't.</div>
+      <div class="tip"><strong>Complex formulas:</strong> Install <a href="https://ollama.com" target="_blank">Ollama</a> (free, runs locally) and enable <strong>Polish</strong> in Settings → Advanced. Run <code>ollama pull llama3.2:1b</code> once to set it up. Koda will use the AI model to handle anything its built-in parser can't.</div>
 
       <h2>Terminal Mode (Command Line)</h2>
       <p>When you use <kbd>Ctrl + Space</kbd> inside a terminal (Windows Terminal, PowerShell, Command Prompt, Git Bash, WSL), Koda automatically converts spoken symbols into shell syntax. No setup needed — it activates whenever a terminal is the active window.</p>
@@ -540,15 +608,7 @@
       <h2>Transcribe Audio Files (Right-Click Menu)</h2>
       <p>Koda can transcribe existing audio files — voice memos, meeting recordings, podcast clips, anything. Right-click the file in Windows Explorer → <strong>Transcribe with Koda</strong>. A small window opens, runs the transcription, and shows the text with a Copy button.</p>
       <p>Supported formats: <code>.mp3</code>, <code>.wav</code>, <code>.m4a</code>, <code>.flac</code>, <code>.ogg</code>, <code>.webm</code>, <code>.wma</code>, <code>.aac</code>, <code>.opus</code>.</p>
-
-      <h3>First-time setup (one-time, ~10 seconds)</h3>
-      <p>The right-click menu entry has to be registered once per computer:</p>
-      <div class="steps">
-        <div class="step"><div class="step-num">1</div><div class="step-text">Open a terminal (PowerShell or cmd) in the Koda folder</div></div>
-        <div class="step"><div class="step-num">2</div><div class="step-text">Run: <code>venv\Scripts\python.exe context_menu.py install</code></div></div>
-        <div class="step"><div class="step-num">3</div><div class="step-text">You should see <code>Registered context menu for: .wav, .mp3, .m4a, ...</code></div></div>
-      </div>
-      <p>That's it. The entry persists across reboots and Koda restarts.</p>
+      <p>The installer registers this entry automatically. No setup needed.</p>
 
       <h3>Windows 11 — "Show more options"</h3>
       <p>Windows 11 hides most custom right-click entries under a secondary menu. If you right-click an audio file and don't see <strong>Transcribe with Koda</strong>:</p>
@@ -557,9 +617,6 @@
         <li>Hold <strong>Shift</strong> while right-clicking to skip straight to the full menu</li>
       </ul>
       <p>The entry will be in the expanded menu.</p>
-
-      <h3>Removing the entry</h3>
-      <p>If you want to remove it: <code>venv\Scripts\python.exe context_menu.py uninstall</code></p>
 
       <h2>Undoing a Paste</h2>
       <p>If Koda pastes something wrong, you have three options:</p>
@@ -597,6 +654,10 @@
         <tr><td>go home</td><td><kbd>Ctrl+Home</kbd></td></tr>
       </table>
 
+      <h3>Voice-controlled app launching</h3>
+      <p>Say "<strong>open</strong> <em>appname</em>" or "<strong>launch</strong> <em>appname</em>" during a <kbd>Ctrl+Space</kbd> dictation and Koda will open that program. Works for common apps (Word, Excel, Chrome, Notepad, Calculator, Spotify, Discord, Slack, Teams, plus anything in your Start Menu).</p>
+      <div class="warning"><strong>The prefix matters</strong> — "please open Word" will <em>not</em> fire. The first word has to be <code>open</code> or <code>launch</code>.</div>
+
       <h3>In a terminal window</h3>
       <p>Terminal shortcuts are different from text editor shortcuts — Koda automatically uses the right ones when a terminal is the active window:</p>
       <table class="mic-table">
@@ -627,7 +688,12 @@
 
       <div class="troubleshoot-item">
         <div class="problem">Transcription is inaccurate</div>
-        <div class="solution">Try the <strong>Accurate</strong> model in Settings (slower but more precise). Reduce background noise. Speak closer to the mic.</div>
+        <div class="solution">Try a higher tier under <strong>Settings → Performance</strong> (Recommended → Power if you have a GPU). Reduce background noise. Speak closer to the mic. Add chronically misheard words to <strong>Settings → Custom Words</strong>.</div>
+      </div>
+
+      <div class="troubleshoot-item">
+        <div class="problem">Transcription is slow</div>
+        <div class="solution">Check <strong>Settings → Performance</strong> — Auto-detect should pick the right tier. On older machines, try <strong>Minimum</strong> for snappier response (less accurate). On GPUs, confirm <strong>Power</strong> is selected — first launch downloads the turbo model (~1.5 GB).</div>
       </div>
 
       <div class="troubleshoot-item">
@@ -635,8 +701,19 @@
         <div class="solution">Plug in your mic before launching Koda, then set it as the default recording device in Windows Sound Settings.</div>
       </div>
 
+      <div class="troubleshoot-item">
+        <div class="problem">Power Mode crashed on first launch (GPU users)</div>
+        <div class="solution">Older builds without cuDNN bundled would crash the first time CUDA initialized. This is fixed in v4.4.0-beta1 onward. If you're hitting this, you're on an old installer — reinstall from the latest <code>KodaSetup-*.exe</code>.</div>
+      </div>
+
+      <div class="troubleshoot-item">
+        <div class="problem">Prompt Assist gets stuck on the opener</div>
+        <div class="solution">Make sure Polish is configured (Ollama running, or an API key set). Without one, Prompt Assist can't assemble the final prompt. Try <strong>Quit</strong> from the tray and relaunch.</div>
+      </div>
+
       <h2>Uninstalling</h2>
       <p>Go to <strong>Windows Settings → Apps → Installed apps</strong>, find <strong>Koda</strong>, and click <strong>Uninstall</strong>.</p>
+      <p>Re-running the installer over an existing install also works — it'll close the running Koda, swap the exe, and relaunch automatically.</p>
 
       <h2>Need Help?</h2>
       <p>Contact: <a href="mailto:alex@kodaspeak.com">alex@kodaspeak.com</a></p>
@@ -644,7 +721,7 @@
     </div>
 
     <div class="footer">
-      Koda v4.3.0 &nbsp;·&nbsp; <a href="mailto:alex@kodaspeak.com">alex@kodaspeak.com</a> &nbsp;·&nbsp; kodaspeak.com
+      Koda v4.4.0-beta1 &nbsp;·&nbsp; <a href="mailto:alex@kodaspeak.com">alex@kodaspeak.com</a> &nbsp;·&nbsp; kodaspeak.com
     </div>
 
   </div>
