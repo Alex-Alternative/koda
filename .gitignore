@@ -27,5 +27,8 @@ koda_preview.png
 # Personal dev scaffolding — not project artifacts, kept on disk per developer
 dev_test_overlay.py
 
+# Session handover docs — live machine-local per forge-handover rule
+docs/sessions/
+
 # Mirrored Whisper model snapshots downloaded at runtime (Koda models dir in dev mode)
 models/
