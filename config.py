@@ -4,8 +4,11 @@ Loads/saves config.json with sensible defaults.
 """
 
 import json
+import logging
 import os
 import sys
+
+logger = logging.getLogger("koda")
 
 
 def _resolve_config_dir():
@@ -115,7 +118,38 @@ def load_config():
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             user_config = json.load(f)
-        return deep_merge(DEFAULT_CONFIG, user_config)
+        merged = deep_merge(DEFAULT_CONFIG, user_config)
+
+        # First launch on a pre-tier-system install: stamp tier without
+        # overwriting the user's existing model/threads/priority values.
+        # If their values diverge from the auto-tier defaults, mark them
+        # as on a 'custom' override so re-detection on later startups
+        # leaves them alone.
+        if "system_check_tier" not in user_config:
+            try:
+                from system_check import classify
+                result = classify()
+                merged["system_check_tier"] = result["tier"]
+                tier_defaults = result.get("defaults", {})
+                user_customised = (
+                    user_config.get("model_size", DEFAULT_CONFIG["model_size"])
+                        != tier_defaults.get("model_size")
+                    or user_config.get("cpu_threads", DEFAULT_CONFIG["cpu_threads"])
+                        != tier_defaults.get("cpu_threads")
+                    or user_config.get("process_priority", DEFAULT_CONFIG["process_priority"])
+                        != tier_defaults.get("process_priority")
+                )
+                merged["system_check_mode"] = "custom" if user_customised else "auto-detect"
+                save_config(merged)
+            except Exception as e:
+                logger.warning(
+                    "First-launch hardware detect failed; defaulting to RECOMMENDED: %s",
+                    e, exc_info=True,
+                )
+                merged.setdefault("system_check_tier", "RECOMMENDED")
+                merged.setdefault("system_check_mode", "auto-detect")
+
+        return merged
     else:
         save_config(DEFAULT_CONFIG)
         return DEFAULT_CONFIG.copy()
@@ -124,12 +158,6 @@ def load_config():
 def save_config(config):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
-
-
-def open_config_file():
-    if not os.path.exists(CONFIG_PATH):
-        save_config(DEFAULT_CONFIG)
-    os.startfile(CONFIG_PATH)
 
 
 CUSTOM_WORDS_PATH = os.path.join(

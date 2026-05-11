@@ -27,7 +27,8 @@ def _pick_fonts():
         _hidden.withdraw()
         installed = set(tkfont.families())
         _hidden.destroy()
-    except Exception:
+    except Exception as e:
+        logger.warning("Font detection failed; using fallback fonts: %s", e)
         installed = set()
     def pick(*candidates):
         for c in candidates:

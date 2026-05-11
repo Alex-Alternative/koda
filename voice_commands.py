@@ -102,22 +102,11 @@ def _action_delete_line():
 # "delete" → Forward-Delete does nothing in terminal without a selection. Ctrl+K
 # kills from cursor to end of line, which is the most useful equivalent.
 
-def _action_terminal_select_all():
-    """Select all text in the terminal viewport (Windows Terminal Ctrl+Shift+A).
-    Ctrl+A + Shift+End fires in PSReadLine but produces no visible highlight.
-    Ctrl+Shift+A is Windows Terminal's native select-all and creates a real visual selection.
-    """
-    keyboard.send("ctrl+shift+a")
-
 def _action_terminal_clear_line():
     """Clear entire command line via PSReadLine RevertLine (Escape).
     Works in Windows mode (default) and Vi mode. Clears current input back to empty.
     """
     keyboard.send("escape")
-
-def _action_terminal_kill_end():
-    """Kill from cursor to end of line (readline Ctrl+K)."""
-    keyboard.send("ctrl+k")
 
 def _action_terminal_kill_bol():
     """Clear the current input line via PSReadLine RevertLine (Escape).
