@@ -1,11 +1,11 @@
 # Koda User Guide
-**Version 4.3.0**
+**Version 4.4.0-beta1**
 
 ---
 
 ## What is Koda?
 
-Koda is a push-to-talk voice transcription tool for Windows. Press a hotkey, speak, and your words are instantly typed into whatever you're working in — emails, Slack, Word, Excel, ChatGPT, anything.
+Koda is a push-to-talk voice transcription tool for Windows. Press a hotkey, speak, and your words are instantly typed into whatever you're working in — emails, Slack, Word, Excel, ChatGPT, Claude, anything.
 
 No clicking a mic button. No switching apps. Just talk.
 
@@ -13,12 +13,22 @@ No clicking a mic button. No switching apps. Just talk.
 
 ## Installation
 
-1. Double-click **KodaSetup-4.3.0.exe**
+1. Double-click **KodaSetup-4.4.0-beta1.exe**
 2. If Windows shows a "protected your PC" warning, click **More info → Run anyway**
 3. Follow the installer wizard
 4. Koda launches automatically when installation completes
 
 Koda appears as a small icon in your **system tray** (bottom-right corner of your screen, near the clock). That's how you know it's running.
+
+### Hardware check during install
+
+The installer runs a quick hardware check and picks defaults that match your machine — speech model size, CPU threads, process priority. You don't need to know what any of that means. Most users see one of these:
+
+- **Recommended** — typical laptop or desktop, balanced speed and accuracy
+- **Minimum** — older or low-RAM machine, lighter model for responsiveness
+- **Power Mode** — NVIDIA GPU detected (RTX or similar), unlocks near-instant transcription with a larger, more accurate model. You'll see a short celebration page in the installer if this applies to you.
+
+You can change any of this later in **Settings → Performance** if you want to tune it manually.
 
 ---
 
@@ -42,15 +52,61 @@ Your words appear in whatever app or field was active when you pressed the hotke
 
 ---
 
-## Other Hotkeys
+## Hotkey Reference
 
 | Hotkey | What it does |
 |--------|-------------|
 | **Ctrl + Space** | Hold to dictate, release to paste. In a terminal, spoken symbols are converted automatically (see Terminal Mode below) |
-| **Ctrl + F9** | In Excel or Google Sheets — Formula Mode (speak a formula or navigate). Everywhere else — Prompt Assist (speak an idea, get a structured prompt for ChatGPT or Claude) |
+| **Ctrl + F9** | In Excel or Google Sheets — Formula Mode (speak a formula or navigate). Everywhere else — Prompt Assist (voice Q&A → structured prompt for ChatGPT or Claude) |
+| **F8** | Voice command mode — speak editing commands like "select all", "undo", "bold" |
 | **F7** | Correction — undoes your last paste and starts a new recording so you can try again |
 | **F6** | Read back — Koda reads your last transcription aloud |
-| **F8** | Voice command mode — speak editing commands like "select all", "undo", "bold" |
+| **F5** | Read back the text you currently have selected |
+
+---
+
+## Prompt Assist — Talk to an AI without typing
+
+Press **Ctrl + F9** anywhere outside Excel or Google Sheets. Koda starts a quick voice conversation that turns your spoken idea into a clean, structured prompt for ChatGPT, Claude, or any other AI tool.
+
+### How it works
+
+1. **You press Ctrl + F9.** Koda speaks the opener: *"What are we working on with AI today?"*
+2. **You answer with the task.** Hold **Ctrl + F9** again and say what you want — "draft a follow-up email", "write a Python script that…", "explain this code".
+3. **Koda asks for context.** Release the hotkey, and Koda asks one short follow-up to fill in any background — "What's the context?" or similar.
+4. **You answer with context.** Hold **Ctrl + F9** again and speak the details.
+5. **Koda previews the assembled prompt.** A small Atlas Navy overlay appears showing the final structured prompt.
+6. **Confirm or cancel.** Say **"send"** (or press the listed hotkey) to paste it into your active window. Say **"cancel"** to discard.
+
+The whole exchange is voice-only — you never touch the keyboard between hotkey presses.
+
+### When it's useful
+
+- Drafting prompts at the start of a long AI session, when you want the model to understand the task properly
+- When you have a half-formed idea and want it cleaned up before sending
+- Hands-free workflow on a long call or while reading reference material
+
+If you don't want the voice Q&A and prefer to just dictate text directly into the chat window, use **Ctrl + Space** instead.
+
+---
+
+## Polish — clean up dictation with AI
+
+"Polish" is an optional pass that fixes filler words, run-on sentences, and grammar in your transcribed text using a local AI model. It is **off by default** and requires a one-time setup.
+
+### Two ways to use it
+
+- **In Prompt Assist (Ctrl + F9)** — Polish is built into the flow. Your raw answers are turned into a tidy structured prompt automatically.
+- **In regular dictation (Ctrl + Space)** — Off by default. Turn it on under **Settings → Advanced → Polish** if you want every transcription cleaned up before paste.
+
+### Setup
+
+You need one of:
+
+- **[Ollama](https://ollama.com)** — free, local, no cloud. Install it, then run `ollama pull llama3.2:1b` in a terminal once. Koda will detect it automatically.
+- **An API key** — bring your own OpenAI or Anthropic key. Add it under Settings → Advanced → Polish → API key.
+
+Without one of these set up, Polish stays off and dictation pastes your raw transcription.
 
 ---
 
@@ -58,10 +114,13 @@ Your words appear in whatever app or field was active when you pressed the hotke
 
 Right-click the Koda tray icon for options:
 
-- **Settings** — change hotkeys, microphone, model quality, and more
+- **Settings** — change hotkeys, microphone, performance tier, Polish, and more
 - **History** — see your recent transcriptions
+- **Stats** — usage stats (words transcribed, sessions, time saved)
 - **Pause / Resume** — temporarily disable Koda
 - **Quit** — close Koda
+
+GPU users see a **Power Mode** badge in the tooltip when you hover over the tray icon.
 
 ---
 
@@ -69,13 +128,25 @@ Right-click the Koda tray icon for options:
 
 Open Settings by right-clicking the tray icon → **Settings**.
 
-| Setting | What it does |
+| Section | What's in it |
 |---------|-------------|
-| Hotkey mode | **Hold** (default) — hold key while speaking. **Toggle** — press once to start, again to stop |
-| Model quality | **Fast** (tiny), **Balanced** (base, default), **Accurate** (small) |
-| Microphone | Choose which mic Koda listens to |
-| Remove filler words | Automatically removes "um", "uh", "like" from transcriptions |
-| Sound effects | Audio cues when recording starts and stops |
+| **Hotkeys** | Remap Ctrl+Space, Ctrl+F9, F6, F7, F8, F5. Switch between Hold and Toggle modes. |
+| **Audio** | Microphone selection, VAD silence timeout, RMS threshold (for noisy environments). |
+| **Performance** | Hardware tier dropdown — Auto-detect (default), Custom, Minimum, Recommended, Power. Advanced expander shows the underlying model size, CPU threads, process priority, compute type. |
+| **Polish** | Turn AI polish on/off for regular dictation. Pick Ollama or BYO API provider. Manage saved API keys. |
+| **Voice** | TTS voice and speech rate (used for Prompt Assist opener and read-back). |
+| **Profiles** | Switch between dictation profiles (e.g. "Code", "Email") with different post-processing rules. |
+| **Custom Words** | Words Whisper gets wrong consistently — add corrections here. |
+
+### Performance tier — what each one means
+
+| Tier | Use it for | What it picks |
+|------|-----------|---------------|
+| **Auto-detect** | Most users | Re-runs the hardware check each time Koda starts. If you upgrade your machine, Koda picks it up automatically. |
+| **Custom** | You've tuned values manually and don't want them overwritten | Whatever you've set; Koda won't change them. |
+| **Minimum** | Older / low-RAM machine | `tiny` model, 2 threads, normal priority. Fast but less accurate. |
+| **Recommended** | Typical modern PC | `small` model, 4 threads, above-normal priority. Balanced. |
+| **Power** | NVIDIA GPU (RTX-class) | `large-v3-turbo` model on CUDA float16, near-instant transcription. Auto-downloads the model on first use (~1.5 GB, one-time). |
 
 ---
 
@@ -93,6 +164,8 @@ You don't need an expensive mic. Here's what to expect:
 
 Make sure your microphone is set as the **default recording device** in Windows:
 > Right-click the speaker icon → Sound settings → Choose your input device
+
+If background noise is a chronic problem, lower the **VAD RMS threshold** in Settings → Audio so Koda doesn't cut off mid-sentence.
 
 ---
 
@@ -191,7 +264,7 @@ You can also navigate your spreadsheet with Ctrl + F9:
 
 ### For complex formulas
 
-If you need nested formulas or advanced logic, install [Ollama](https://ollama.com) (free, runs locally) and enable **LLM Polish** in Settings → Advanced. Run `ollama pull phi3:mini` once to set it up. Koda will use the AI model to handle anything its built-in parser can't.
+If you need nested formulas or advanced logic, install [Ollama](https://ollama.com) (free, runs locally) and enable **Polish** in Settings → Advanced. Run `ollama pull llama3.2:1b` once to set it up. Koda will use the AI model to handle anything its built-in parser can't.
 
 ---
 
@@ -250,18 +323,7 @@ Koda can transcribe existing audio files — voice memos, meeting recordings, po
 
 Supported formats: `.mp3`, `.wav`, `.m4a`, `.flac`, `.ogg`, `.webm`, `.wma`, `.aac`, `.opus`.
 
-### First-time setup (one-time, ~10 seconds)
-
-The right-click menu entry has to be registered once per computer:
-
-1. Open a terminal (PowerShell or cmd) in the Koda folder
-2. Run:
-   ```
-   venv\Scripts\python.exe context_menu.py install
-   ```
-3. You should see `Registered context menu for: .wav, .mp3, .m4a, ...`
-
-That's it. The entry persists across reboots and Koda restarts.
+The installer registers this entry automatically. No setup needed.
 
 ### Windows 11 — "Show more options"
 
@@ -271,14 +333,6 @@ Windows 11 hides most custom right-click entries under a secondary menu. If you 
 - Hold **Shift** while right-clicking to skip straight to the full menu
 
 The entry will be in the expanded menu.
-
-### Removing the entry
-
-If you want to remove it:
-
-```
-venv\Scripts\python.exe context_menu.py uninstall
-```
 
 ---
 
@@ -316,6 +370,12 @@ While holding **Ctrl + Space** (or F8 for command mode), speak these commands to
 | go to the end | Ctrl+End |
 | go home | Ctrl+Home |
 
+### Voice-controlled app launching
+
+Say "**open** _appname_" or "**launch** _appname_" during a Ctrl+Space dictation and Koda will open that program. Works for common apps (Word, Excel, Chrome, Notepad, Calculator, Spotify, Discord, Slack, Teams, plus anything in your Start Menu).
+
+The prefix matters — "**please** open Word" will *not* fire. The first word has to be `open` or `launch`.
+
 ### In a terminal window
 
 Terminal shortcuts are different from text editor shortcuts — Koda automatically uses the right ones when a terminal is the active window:
@@ -343,19 +403,34 @@ Terminal shortcuts are different from text editor shortcuts — Koda automatical
 - This is rare — Koda automatically recovers from most hotkey issues
 
 **Transcription is inaccurate**
-- Try the **Accurate** model in Settings (slower but more precise)
+- Try a higher tier under **Settings → Performance** (Recommended → Power if you have a GPU)
 - Reduce background noise
 - Speak closer to the mic
+- Add chronically misheard words to **Settings → Custom Words**
+
+**Transcription is slow**
+- Check **Settings → Performance** — Auto-detect should pick the right tier
+- On older machines, try **Minimum** for snappier response (less accurate)
+- On GPUs, confirm **Power** is selected — first launch downloads the turbo model (~1.5 GB)
 
 **"No microphone detected"**
 - Plug in your mic before launching Koda
 - Set it as the default recording device in Windows Sound Settings
+
+**Power Mode crashed on first launch (GPU users)**
+- Older builds without cuDNN bundled would crash the first time CUDA initialized. This is fixed in v4.4.0-beta1 onward. If you're hitting this, you're on an old installer — reinstall from the latest `KodaSetup-*.exe`.
+
+**Prompt Assist gets stuck on the opener**
+- Make sure Polish is configured (Ollama running, or an API key set). Without one, Prompt Assist can't assemble the final prompt.
+- Try **Quit** from the tray and relaunch.
 
 ---
 
 ## Uninstalling
 
 Go to **Windows Settings → Apps → Installed apps**, find **Koda**, and click **Uninstall**.
+
+Re-running the installer over an existing install also works — it'll close the running Koda, swap the exe, and relaunch automatically.
 
 ---
 

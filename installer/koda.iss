@@ -85,6 +85,9 @@ Source: "..\koda.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; Plugins directory (empty by default, user adds plugins here)
 Source: "..\plugins\__init__.py"; DestDir: "{app}\plugins"; Flags: ignoreversion
 
+; User guide (HTML — opened from Start Menu shortcut)
+Source: "..\docs\user-guide.html"; DestDir: "{app}\docs"; Flags: ignoreversion
+
 ; Power Mode celebration assets — extracted to {tmp} on demand by the
 ; wizard page (not installed to {app}). dontcopy = bundled in installer
 ; but only materialised via ExtractTemporaryFile when needed.
@@ -98,6 +101,7 @@ Name: "{app}\plugins"; Permissions: users-modify
 [Icons]
 ; Start menu
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\koda.ico"
+Name: "{group}\Koda User Guide"; Filename: "{app}\docs\user-guide.html"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 ; Desktop shortcut — Public\Desktop (not OneDrive-synced, no blue-check overlay)
